@@ -44,7 +44,6 @@ extern void enable_curses(void);
 extern int mining_threads;
 extern double total_secs;
 extern int opt_g_threads;
-extern bool ping;
 extern bool opt_loginput;
 extern char *opt_kernel_path;
 extern int gpur_thr_id;
@@ -53,15 +52,9 @@ extern bool have_opencl;
 
 extern void *miner_thread(void *userdata);
 extern int dev_from_id(int thr_id);
-extern void tailsprintf(char *f, const char *fmt, ...);
-extern void wlog(const char *f, ...);
 extern void decay_time(double *f, double fadd);
 
 /**********************************************/
-
-#ifdef HAVE_OPENCL
-struct device_drv opencl_drv;
-#endif
 
 #ifdef HAVE_ADL
 extern float gpu_temp(int gpu);
@@ -229,7 +222,7 @@ char *set_kernel(char *arg)
 	char *nextptr;
 
 	if (opt_scrypt)
-		return "Cannot use sha256 kernel with scrypt";
+		return "Cannot specify a kernel with scrypt";
 	nextptr = strtok(arg, ",");
 	if (nextptr == NULL)
 		return "Invalid parameters for set kernel";
@@ -283,14 +276,6 @@ char *set_gpu_map(char *arg)
 	}
 
 	return NULL;
-}
-
-void get_intrange(char *arg, int *val1, int *val2)
-{
-	if (sscanf(arg, "%d-%d", val1, val2) == 1) {
-		*val2 = *val1;
-		*val1 = 0;
-	}
 }
 
 char *set_gpu_engine(char *arg)
@@ -561,7 +546,7 @@ char *set_intensity(char *arg)
 	else {
 		gpus[device].dynamic = false;
 		val = atoi(nextptr);
-		if (val < MIN_INTENSITY || val > MAX_INTENSITY)
+		if (val < MIN_INTENSITY || val > MAX_GPU_INTENSITY)
 			return "Invalid value passed to set intensity";
 		tt = &gpus[device].intensity;
 		*tt = val;
@@ -575,7 +560,7 @@ char *set_intensity(char *arg)
 		else {
 			gpus[device].dynamic = false;
 			val = atoi(nextptr);
-			if (val < MIN_INTENSITY || val > MAX_INTENSITY)
+			if (val < MIN_INTENSITY || val > MAX_GPU_INTENSITY)
 				return "Invalid value passed to set intensity";
 
 			tt = &gpus[device].intensity;
@@ -596,7 +581,7 @@ char *set_intensity(char *arg)
 void print_ndevs(int *ndevs)
 {
 	opt_log_output = true;
-	opencl_drv.drv_detect();
+	opencl_drv.drv_detect(false);
 	clear_adl(*ndevs);
 	applog(LOG_INFO, "%i GPU devices max detected", *ndevs);
 }
@@ -626,7 +611,7 @@ void pause_dynamic_threads(int gpu)
 
 		thr->pause = cgpu->dynamic;
 		if (!cgpu->dynamic && cgpu->deven != DEV_DISABLED)
-			tq_push(thr->q, &ping);
+			cgsem_post(&thr->sem);
 	}
 }
 
@@ -677,25 +662,25 @@ retry:
 				if (temp != -1)
 					sprintf(logline, "%.1f C  ", temp);
 				if (fanspeed != -1 || fanpercent != -1) {
-					tailsprintf(logline, "F: ");
+					tailsprintf(logline, sizeof(logline), "F: ");
 					if (fanpercent != -1)
-						tailsprintf(logline, "%d%% ", fanpercent);
+						tailsprintf(logline, sizeof(logline), "%d%% ", fanpercent);
 					if (fanspeed != -1)
-						tailsprintf(logline, "(%d RPM) ", fanspeed);
-					tailsprintf(logline, " ");
+						tailsprintf(logline, sizeof(logline), "(%d RPM) ", fanspeed);
+					tailsprintf(logline, sizeof(logline), " ");
 				}
 				if (engineclock != -1)
-					tailsprintf(logline, "E: %d MHz  ", engineclock);
+					tailsprintf(logline, sizeof(logline), "E: %d MHz  ", engineclock);
 				if (memclock != -1)
-					tailsprintf(logline, "M: %d Mhz  ", memclock);
+					tailsprintf(logline, sizeof(logline), "M: %d Mhz  ", memclock);
 				if (vddc != -1)
-					tailsprintf(logline, "V: %.3fV  ", vddc);
+					tailsprintf(logline, sizeof(logline), "V: %.3fV  ", vddc);
 				if (activity != -1)
-					tailsprintf(logline, "A: %d%%  ", activity);
+					tailsprintf(logline, sizeof(logline), "A: %d%%  ", activity);
 				if (powertune != -1)
-					tailsprintf(logline, "P: %d%%", powertune);
-				tailsprintf(logline, "\n");
-				wlog(logline);
+					tailsprintf(logline, sizeof(logline), "P: %d%%", powertune);
+				tailsprintf(logline, sizeof(logline), "\n");
+				_wlog(logline);
 			}
 		}
 #endif
@@ -709,7 +694,7 @@ retry:
 			thr = get_thread(i);
 			if (thr->cgpu != cgpu)
 				continue;
-			get_datestamp(checkin, &thr->last);
+			get_datestamp(checkin, sizeof(checkin), &thr->last);
 			displayed_rolling = thr->rolling;
 			if (!mhash_base)
 				displayed_rolling *= 1000;
@@ -740,6 +725,7 @@ retry:
 	wlogprint("[E]nable [D]isable [I]ntensity [R]estart GPU %s\n",adl_active ? "[C]hange settings" : "");
 
 	wlogprint("Or press any other key to continue\n");
+	logwin_update();
 	input = getch();
 
 	if (nDevs == 1)
@@ -763,7 +749,7 @@ retry:
 		for (i = 0; i < mining_threads; ++i) {
 			thr = get_thread(i);
 			cgpu = thr->cgpu;
-			if (cgpu->drv->drv_id != DRIVER_OPENCL)
+			if (cgpu->drv->drv_id != DRIVER_opencl)
 				continue;
 			if (dev_from_id(i) != selected)
 				continue;
@@ -771,9 +757,9 @@ retry:
 				wlogprint("Must restart device before enabling it");
 				goto retry;
 			}
-			applog(LOG_DEBUG, "Pushing ping to thread %d", thr->id);
+			applog(LOG_DEBUG, "Pushing sem post to thread %d", thr->id);
 
-			tq_push(thr->q, &ping);
+			cgsem_post(&thr->sem);
 		}
 		goto retry;
 	} if (!strncasecmp(&input, "d", 1)) {
@@ -799,7 +785,15 @@ retry:
 			wlogprint("Invalid selection\n");
 			goto retry;
 		}
-		intvar = curses_input("Set GPU scan intensity (d or " _MIN_INTENSITY_STR " -> " _MAX_INTENSITY_STR ")");
+		if (opt_scrypt) {
+			intvar = curses_input("Set GPU scan intensity (d or "
+					      MIN_SCRYPT_INTENSITY_STR " -> "
+					      MAX_SCRYPT_INTENSITY_STR ")");
+		} else {
+			intvar = curses_input("Set GPU scan intensity (d or "
+					      MIN_SHA_INTENSITY_STR " -> "
+					      MAX_SHA_INTENSITY_STR ")");
+		}
 		if (!intvar) {
 			wlogprint("Invalid input\n");
 			goto retry;
@@ -1081,7 +1075,7 @@ static cl_int queue_scrypt_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_u
 	cl_uint le_target;
 	cl_int status = 0;
 
-	le_target = *(cl_uint *)(blk->work->target + 28);
+	le_target = *(cl_uint *)(blk->work->device_target + 28);
 	clState->cldata = blk->work->data;
 	status = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 80, clState->cldata, 0, NULL,NULL);
 
@@ -1150,7 +1144,7 @@ select_cgpu:
 	for (thr_id = 0; thr_id < mining_threads; ++thr_id) {
 		thr = get_thread(thr_id);
 		cgpu = thr->cgpu;
-		if (cgpu->drv->drv_id != DRIVER_OPENCL)
+		if (cgpu->drv->drv_id != DRIVER_opencl)
 			continue;
 		if (dev_from_id(thr_id) != gpu)
 			continue;
@@ -1175,7 +1169,7 @@ select_cgpu:
 
 		thr = get_thread(thr_id);
 		cgpu = thr->cgpu;
-		if (cgpu->drv->drv_id != DRIVER_OPENCL)
+		if (cgpu->drv->drv_id != DRIVER_opencl)
 			continue;
 		if (dev_from_id(thr_id) != gpu)
 			continue;
@@ -1207,17 +1201,17 @@ select_cgpu:
 	}
 
 	cgtime(&now);
-	get_datestamp(cgpu->init, &now);
+	get_datestamp(cgpu->init, sizeof(cgpu->init), &now);
 
 	for (thr_id = 0; thr_id < mining_threads; ++thr_id) {
 		thr = get_thread(thr_id);
 		cgpu = thr->cgpu;
-		if (cgpu->drv->drv_id != DRIVER_OPENCL)
+		if (cgpu->drv->drv_id != DRIVER_opencl)
 			continue;
 		if (dev_from_id(thr_id) != gpu)
 			continue;
 
-		tq_push(thr->q, &ping);
+		cgsem_post(&thr->sem);
 	}
 
 	goto select_cgpu;
@@ -1233,10 +1227,12 @@ void *reinit_gpu(__maybe_unused void *userdata)
 
 
 #ifdef HAVE_OPENCL
-static void opencl_detect()
+static void opencl_detect(bool hotplug)
 {
 	int i;
 
+	if (opt_nogpu || hotplug)
+		return;
 	nDevs = clDevicesNum();
 	if (nDevs < 0) {
 		applog(LOG_ERR, "clDevicesNum returned error, no GPUs usable");
@@ -1280,7 +1276,7 @@ static void reinit_opencl_device(struct cgpu_info *gpu)
 }
 
 #ifdef HAVE_ADL
-static void get_opencl_statline_before(char *buf, struct cgpu_info *gpu)
+static void get_opencl_statline_before(char *buf, size_t bufsiz, struct cgpu_info *gpu)
 {
 	if (gpu->has_adl) {
 		int gpuid = gpu->device_id;
@@ -1289,24 +1285,25 @@ static void get_opencl_statline_before(char *buf, struct cgpu_info *gpu)
 		int gp;
 
 		if (gt != -1)
-			tailsprintf(buf, "%5.1fC ", gt);
+			tailsprintf(buf, bufsiz, "%5.1fC ", gt);
 		else
-			tailsprintf(buf, "       ", gt);
+			tailsprintf(buf, bufsiz, "       ");
 		if (gf != -1)
-			tailsprintf(buf, "%4dRPM ", gf);
+			// show invalid as 9999
+			tailsprintf(buf, bufsiz, "%4dRPM ", gf > 9999 ? 9999 : gf);
 		else if ((gp = gpu_fanpercent(gpuid)) != -1)
-			tailsprintf(buf, "%3d%%    ", gp);
+			tailsprintf(buf, bufsiz, "%3d%%    ", gp);
 		else
-			tailsprintf(buf, "        ");
-		tailsprintf(buf, "| ");
+			tailsprintf(buf, bufsiz, "        ");
+		tailsprintf(buf, bufsiz, "| ");
 	} else
 		gpu->drv->get_statline_before = &blank_get_statline_before;
 }
 #endif
 
-static void get_opencl_statline(char *buf, struct cgpu_info *gpu)
+static void get_opencl_statline(char *buf, size_t bufsiz, struct cgpu_info *gpu)
 {
-	tailsprintf(buf, " I:%2d", gpu->intensity);
+	tailsprintf(buf, bufsiz, " I:%2d", gpu->intensity);
 }
 
 struct opencl_thread_data {
@@ -1325,9 +1322,10 @@ static bool opencl_thread_prepare(struct thr_info *thr)
 	int virtual_gpu = cgpu->virtual_gpu;
 	int i = thr->id;
 	static bool failmessage = false;
+	int buffersize = opt_scrypt ? SCRYPT_BUFFERSIZE : BUFFERSIZE;
 
 	if (!blank_res)
-		blank_res = calloc(BUFFERSIZE, 1);
+		blank_res = calloc(buffersize, 1);
 	if (!blank_res) {
 		applog(LOG_ERR, "Failed to calloc in opencl_thread_init");
 		return false;
@@ -1390,7 +1388,7 @@ static bool opencl_thread_prepare(struct thr_info *thr)
 	}
 	applog(LOG_INFO, "initCl() finished. Found %s", name);
 	cgtime(&now);
-	get_datestamp(cgpu->init, &now);
+	get_datestamp(cgpu->init, sizeof(cgpu->init), &now);
 
 	have_opencl = true;
 
@@ -1406,6 +1404,7 @@ static bool opencl_thread_init(struct thr_info *thr)
 	cl_int status = 0;
 	thrdata = calloc(1, sizeof(*thrdata));
 	thr->cgpu_data = thrdata;
+	int buffersize = opt_scrypt ? SCRYPT_BUFFERSIZE : BUFFERSIZE;
 
 	if (!thrdata) {
 		applog(LOG_ERR, "Failed to calloc in opencl_thread_init");
@@ -1433,7 +1432,7 @@ static bool opencl_thread_init(struct thr_info *thr)
 			break;
 	}
 
-	thrdata->res = calloc(BUFFERSIZE, 1);
+	thrdata->res = calloc(buffersize, 1);
 
 	if (!thrdata->res) {
 		free(thrdata);
@@ -1442,7 +1441,7 @@ static bool opencl_thread_init(struct thr_info *thr)
 	}
 
 	status |= clEnqueueWriteBuffer(clState->commandQueue, clState->outputBuffer, CL_TRUE, 0,
-			BUFFERSIZE, blank_res, 0, NULL, NULL);
+				       buffersize, blank_res, 0, NULL, NULL);
 	if (unlikely(status != CL_SUCCESS)) {
 		applog(LOG_ERR, "Error: clEnqueueWriteBuffer failed.");
 		return false;
@@ -1483,6 +1482,8 @@ static int64_t opencl_scanhash(struct thr_info *thr, struct work *work,
 	size_t globalThreads[1];
 	size_t localThreads[1] = { clState->wsize };
 	int64_t hashes;
+	int found = opt_scrypt ? SCRYPT_FOUND : FOUND;
+	int buffersize = opt_scrypt ? SCRYPT_BUFFERSIZE : BUFFERSIZE;
 
 	/* Windows' timer resolution is only 15ms so oversample 5x */
 	if (gpu->dynamic && (++gpu->intervals * dynamic_us) > 70000) {
@@ -1527,7 +1528,7 @@ static int64_t opencl_scanhash(struct thr_info *thr, struct work *work,
 	}
 
 	status = clEnqueueReadBuffer(clState->commandQueue, clState->outputBuffer, CL_FALSE, 0,
-			BUFFERSIZE, thrdata->res, 0, NULL, NULL);
+				     buffersize, thrdata->res, 0, NULL, NULL);
 	if (unlikely(status != CL_SUCCESS)) {
 		applog(LOG_ERR, "Error: clEnqueueReadBuffer failed error %d. (clEnqueueReadBuffer)", status);
 		return -1;
@@ -1542,17 +1543,17 @@ static int64_t opencl_scanhash(struct thr_info *thr, struct work *work,
 	clFinish(clState->commandQueue);
 
 	/* FOUND entry is used as a counter to say how many nonces exist */
-	if (thrdata->res[FOUND]) {
+	if (thrdata->res[found]) {
 		/* Clear the buffer again */
 		status = clEnqueueWriteBuffer(clState->commandQueue, clState->outputBuffer, CL_FALSE, 0,
-				BUFFERSIZE, blank_res, 0, NULL, NULL);
+					      buffersize, blank_res, 0, NULL, NULL);
 		if (unlikely(status != CL_SUCCESS)) {
 			applog(LOG_ERR, "Error: clEnqueueWriteBuffer failed.");
 			return -1;
 		}
 		applog(LOG_DEBUG, "GPU %d found something?", gpu->device_id);
 		postcalc_hash_async(thr, work, thrdata->res);
-		memset(thrdata->res, 0, BUFFERSIZE);
+		memset(thrdata->res, 0, buffersize);
 		/* This finish flushes the writebuffer set with CL_FALSE in clEnqueueWriteBuffer */
 		clFinish(clState->commandQueue);
 	}
@@ -1565,14 +1566,14 @@ static void opencl_thread_shutdown(struct thr_info *thr)
 	const int thr_id = thr->id;
 	_clState *clState = clStates[thr_id];
 
-	clReleaseCommandQueue(clState->commandQueue);
 	clReleaseKernel(clState->kernel);
 	clReleaseProgram(clState->program);
+	clReleaseCommandQueue(clState->commandQueue);
 	clReleaseContext(clState->context);
 }
 
 struct device_drv opencl_drv = {
-	.drv_id = DRIVER_OPENCL,
+	.drv_id = DRIVER_opencl,
 	.dname = "opencl",
 	.name = "GPU",
 	.drv_detect = opencl_detect,

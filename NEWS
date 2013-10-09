@@ -1,5 +1,1114 @@
+Version 3.5.0 - 29th September 2013
+
+- Add magic init sequence required on BF1 devices to get them mining on windows.
+- usbinfo.devlock is only ever write locked so convert it to a mutex
+- Icarus remove unneeded opt_debug tests due to applog being a macro
+- Icarus - CMR shouldn't wait the full timeout due to handle sharing
+- We should only yield once in cg_wunlock
+- Provide a function to downgrade a cglock from a write lock to an intermediate
+variant.
+- Deuglify use of _PARSE_COMMANDS macro expansions.
+- Deuglify use of usb parse commands macro in usbutils.
+- Use the driver add commands macros in api.c to avoid individually listing
+them.
+- Separate out asic fpga and opencl drivers in the driver parse commands macro
+for use individually as needed.
+- Use macro expansion in usb_find_devices to avoid explicitly listing them all.
+- Use macro expansion to iterate over all the drivers without explicitly writing
+them out in usbutils.c
+- Iterate over the bitfury offsets in order of decreasing likelihood.
+- Reattach the kernel driver on linux on usb_uninit.
+- Attach the kernel driver on failure to usb init on linux.
+- libusb kernel driver operations are only available on linux.
+- There is no need to get the external prototypes for drivers in cgminer.c any
+more.
+- Remove unnecessary gpu_threads initialisation.
+- Put avalon last in the sequence of adding drivers to prevent it trying to
+claim similar chip devices on startup.
+- Use macro expansion to iterate over all device drivers without needing to
+explicitly code in support in all places. Pass a hotplug bool to the detect()
+function to prevent opencl trying to hogplug GPUs.
+- Forward declare all device drivers in miner.h avoiding the need to export them
+everywhere else.
+- Add a noop function for driver detect when it's missing.
+- Reuse the DRIVER_ macros to avoid having yet another definition for DRV_
+- Use macro expansion to generate extern device_drv prototypes.
+- Create a macro list of drivers to enable easier addition of further drivers.
+- There is no point setting the BF1 preferred packet size to the maximum since
+it will do so automatically.
+- icarus ensure all cmr interfaces are initialised properly
+- usbutils - fix USBDEBUG warnings
+- Remove unnecessary steps in communicating with BF1 and just use USB interface
+1.
+- usbutils - usb_bulk_transfer fix the buf/data fix
+- usb_bulk_transfer - use the allocated buffer
+- Set preferred packet sizes per interface on BF1.
+- usbutils allow PrefPacketSize per endpoint
+- Remove magic control sequences on open/close on BF1 and just flush the read
+buffers.
+- Check return codes in getinfo and reset and fail as needed in BF1.
+- Check return code for bitfury_open and release resources properly on failed
+initialisation.
+- Abstract out flushing of interrupt reads in BF1 devices.
+- Perform interrupt read after close message on BF1 as per serial close.
+- Perform interrupt read flush as per serial open on BF1 devices.
+- Add information for 2nd USB interface on BF1 devices and choose interface 1
+for bulk transfers.
+- usbutils - bulk transfer copy test fix
+- usbutils - add USBDEBUG for usb_bulk_transfer
+- Add more read_ii variants to usbutils.
+- Name remainder of BFU usb commands used.
+- Use submit_tested_work in bitfury driver to avoid unnecessarily re-testing the
+work for validity.
+- Abstract out work submission once it's been tested, to be used by drivers that
+do their own internal validity testing.
+- Store the hash2 array in struct work for further reuse.
+- usbutils - which_intinfo not requried
+- Use the test_nonce function within submit_nonce and store the uint32
+corresponding to hash2 37 for further use.
+- usbutils - interfaces must all be on one handle - ep implies the interface
+- avalon stats use exact type
+- Only set share diff if we've confirmed it's a share first.
+- Update ASIC-README for bitfury devices.
+- Use an array of offsets when checking nonces in bitfury_checkresults
+- Limit the duration we wait for reads in BF1 based on time already elapsed to
+account for other delays such as work restart messages or out of work.
+- Minimise size of serial string we copy in BF1 stats to avoid overflow.
+- Implement basic API stats for BF1 and increase array of results to check for
+the rare straggling result.
+- Space debug output for bf1 to separate from numerals.
+- Abstract out the bitfury open close and reset functions and use them on
+reinit.
+- Rename BF1 devices BF1
+- Check for work restart, breaking out early after usb reads in BF1.
+- Do not lose the first sets of results from BF1.
+- There is no point checking for results from the next round of work on BF1.
+- Last result returned by BF1 is an end of results marker so ignore it.
+- restart_wait should return 0 if thr_restart is true.
+- Remove unused code by bitfury driver since current driver uses serialised
+scanhash.
+- Meter out return of estimated hashes in BF1 to smooth out visible hashrate.
+- Optimise inner scanhash loop for bf1.
+- Add yet another backup work for triple buffering of work in bf1 to account for
+extra late results returned and don't check nonce offsets which appear to never
+return.
+- Name the work request and result usb commands for BF1
+- Define a mandatory upper limit to waiting for reset and data on BF1 based on
+full nonce duration.
+- Decrease usb buffering to verbose logging.
+- Add in first draft for a serialised work model sending/receiving data for BF1
+devices.
+- Add complete close sequence to bf1 as it happens on serial.
+- Provide a bitfury identify function for bf1.
+- Reliably extract BF1 information at startup and reset the device.
+- Add commands for getting BF1 bitfury info
+- Add magic BF1 bitfury open and close control sequences.
+- Add BF1 detection code to bitfury driver.
+- Create basic placeholders for bitfury driver code.
+- Add bf1 device information to usbutils to enable device detection.
+- Add basic defines for building for bitfury devices.
+- Add redfury device to udev rules.
+- avalon: display the FPGA controller version on API
+- pool_active uninitialised_var rolltime
+- Use macro expansion to only need to define usb enums and commands in one
+place.
+- usbutils saving incorrect overflow buffer
+- ignore libusb.la and *.lo on linux
+- icarus support CMR with no extensions
+- usbtils - interfaces dont work yet in libusb windows so disable for that only
+- Provide a --disable-libcurl config option to build support for stratum mining
+only.
+- Fix the api-example.c compile under Linux
+- usbutils - only release the device once - for the first intinfo
+- usbutils set_interface is no longer valid
+- ubsutils interfaces much each have their own handle
+- usbutils kernel_detach should use the interface number
+- usbutils - allow the driver to change which_intinfo
+- Reset quotas on load balance for all pools at the same time to avoid running
+out during selection and unintentionally dropping to fallback.
+- Break out of select pool from a common point for appropriate debug messages
+and to avoid further tests.
+- usbutils correct/reverse CMR product numbers
+- usbutils specifically track handles and interfaces
+- change drivers to use usb_interface() - required for multi interface change
+- usbutils - allow a device to use multiple interfaces (and better var names)
+- Cast -1 to (char) to cope with different default char types on ARM.
+
+
+Version 3.4.3 - 13th September 2013
+
+- Put corefoundation and iokit separate in ldflags for darwin.
+- Add rules for libusb Makefile.am building on osx
+- Add flags for building libusb statically on osx.
+- Find the greatest common denominator in quotas and use the smallest number of
+consecutive work items per pool in quota load balance mode to smooth hashrate
+across pools with large quotas. Give excess quota to priority pool 0 instead of
+pool 0.
+- Avoid dynamically adding stack memory for nonce2 in the stratum send thread
+and check the pool's nonce2_len will not cause an overflow.
+- Add subdir-objects to automake options.
+- Use inet_addr instead of inet_network to fix windows build.
+- Remove unused pbase variable.
+- Add support for socks4/4a proxies with stratum, and drop back to socks4
+support via the global --socks-proxy command to not break previous
+configurations.
+- Fix warning on mingw build.
+- Only show long-poll message in pool summary if it's not using stratum.
+- Increase the time for the waiting for work message to be given to be greater
+than that required for a pool swap in the scheduler which is set to 5s.
+- Change message in status when using a balanced pool strategy to notify if
+there's a stratum pool as well.
+- Use the --failover-only flag to have special meaning in combination with
+load-balance mode to distribute any unused quota back to pool 0 to maintain
+ratios amongst other pools.
+- Display quota and allow it to be modified via the pool menu.
+- Add API commands and modify output to support pool quota displaying and
+changing.
+- Change message in status when using a balanced pool strategy to notify if
+there's a stratum pool as well.
+- Add quota support to configuration files.
+- Rotate pools on all failures to set a pool in select_pool.
+- Use quotas for load-balance pool strategy.
+- Provide a mechanism for setting a pool quota to be used by load-balance.
+- Use the --socks-proxy option with stratum, changing it to defaulting to socks5
+and give appropriate message should it fail to connect.
+- Cope with trailing slashes in stratum urls.
+- Add more debugging messages when negotiating with proxies for stratum.
+- Test specifically for socks5h in socks support for stratum.
+- Add support for socks5 proxy with stratum
+- Provide support for negotiating a stratum connection via http proxies.
+- Connect to the proxy URL and port if specified for stratum sockets instead of
+the pool directly.
+- Extract any proxy url and port to be used by sockaddr if possible using
+extract_sockaddr.
+- Make extract_sockaddr set variables passed to it rather than pool struct
+members.
+- miner.php sort the mcast rigs so they are always in the same relative order
+- miner.php allow sending the muticast message multiple times
+- miner.php mcast ignore duplicate replies
+
+
+Version 3.4.2 - 3rd September 2013
+
+- take_queued_work_bymidstate should use a write lock.
+- miner.php coding warning
+- miner.php disable 'gen' by default
+- miner.php allow formula generation of new fields
+- miner.php add doctype
+- miner.php remove incorrect echo
+- miner.php optional error if not enough mcast rigs are found
+
+
+Version 3.4.1 - 31st August 2013
+
+- API mcast add a description option with miner.php
+- Always use a maxpacketsize buffer in usb_bulk_transfer
+- bflsc ensure getinfo cannot overflow it's storage buffer
+- Don't decref json values in stratum parsing due to memory corruption.
+- Use 64 bytes for all libusb control transfers.
+- Skip dissecting opt->names in parse_config if it doesn't exist.
+- Use an internal buffer in _usb_transfer_read in case the read is larger than
+the buffer passed to it.
+- ICA optional limit timing with short=N or long=N
+- Revert to old custom tolines function since strtok_r is not portable.
+- bflsc remove unused commented out code
+- logging - code mistake
+- logging - applogsiz() for large messages
+- Provide base structures for getaddrinfo.
+- Include string.h in bflsc driver.
+- Get rid of linear removal of spaces in bflsc text parsing and use strstr
+throughout instead.
+- Use reentrant strtok in tolines() function in bflsc to avoid racing on
+contextless calls.
+- Show how small a too small result in bflsc is.
+- Duplicate the buffer in process_results in bflsc since strtok modifies it
+making debugging output limited to one line.
+- Only process nonces in bflsc if the breakdown function succeeds.
+- Ignore zero count messages in bflsc instead of trying to parse them.
+- Return ok in tolines when it doesn't match inprocess message for bflsc.
+- Remove inprocess line instead of deleting all following responses in bflsc.
+- Change ok testing logic in breakdown() in bflsc and return if not ok at any
+stage.
+- Check the return value of tolines in bflsc driver.
+- Use strtok to parse lines in bflsc driver.
+- Add libusb-1.0 m4 directory and gitignore file.
+- Properly convert from ranlib to lt_init in configure.ac
+- Make autoconf always build for libusb.
+- More autoconf fixes.
+- Unconditionally build jansson statically from the cgminer source tree.
+- Only test for all usb devices once in configure.ac
+- Fix various libusb warnings and possible bugs on linux build.
+- Add make clean and maintainer-clean to autogen
+- Remove examples from libusb Makefile and generated autoconf files.
+- Fix libusb subdirectory builds.
+- Remove cached files from libusb autoconf on running autogen.sh
+- Remove unused HAVE_LISBUSB macro and use USE_USBUTILS everywhere.
+- Use direct auto* files to avoid failure of autoreconf
+- Remove unused and maintainer cleaned files
+- Show RT_LIBS in ./configure output.
+- First import of libusb-1.0
+- bflsc xlinkstr use snprintf
+- Fix win32 build.
+- Use take_queued_work_bymidstate in the bflsc driver to avoid the rare chance
+repeated results come back from the same work item.
+- Provide a funcion that looks up queued work by midstate and then removes it
+from the device hash database.
+- Fix no -rt library on darwin.
+- Update included jansson to v2.4
+- Fix OSX build.
+- Provide an osx fix for cgtimers and a fallback to timevals for all other
+platforms !linux !win32 !osx.
+- Move two more timer functions out of define macros to enable them to be used
+by future osx code.
+- cgtimer_sub is now the same since cgtimer_t should be the same on all
+platforms.
+- miner.php fix missing global
+- Only count submitted nonces as diff1shares if they're valid.
+- Substantially raise the maximum avalon frequency for water-cooled, over-volted
+designs.
+- Compile MCast.java with an old java
+- API Multicast sample MCast.java+MCast.class
+- BTB show C/MHz/mV for device
+- api.c remove unused reply string
+- api.c fix mcast debug message bug
+- miner.php implement API Multicast handling to automatically find your local
+net miners
+- API mcast only reply to remote IP's that are allowed access
+- Initial API Multicast response v0.1 to find cgminer APIs
+- Use timespecs on windows as cgtimer_t to capitalise on the higher resolution
+clock changes.
+- Abstract out the conversion of system time to an lldiv_t in decimicroseconds.
+- Use our own gettimeofday implementation on windows for it to be consistent
+across ming builds and higher resolution.
+
+
+Version 3.4.0 - 21st August 2013
+
+- Use stack data for HW error% in avalon stats.
+- Add avalon HW error% to stats and only show BTB variables if avalon is a BTB.
+- Check for cnx_needed on each loop through wait_lp_current.
+- Return positive for cnx_needed when no_work is true.
+- Stratum is used more often so test for it first.
+- Reorder support names alphabetically.
+- Only display the no pool work message once if there are multiple waiters in
+hash_pop
+- Provide a message and set a bool when no work is available from any pools and
+when it resumes again.
+- We don't want to continue into the hash_pop function if the getq is frozen.
+- Only report threads in and out in queued work devices across a get work since
+the rest happens asynchronously and the get work is what the device might be
+waiting on.
+- Thread reportin and out can be static non inline.
+- usbutils cps sleep_estimate is not an underestimate
+- usbutils add cps stats estimates
+- Provide cgtimer_sub helper functions.
+- Provide cgtimer_to_ms helper functions.
+- Rename cgsleep_prepare_r as cgtimer_time to get time in cgtimer_t format and
+call cgsleep_prepare_r as a macro for cgtimer_time
+- Use the reentrant cgsleep functions for usecps in usbutils.
+- TimeBeginPeriod and TimeEndPeriod do not add significant overhead when run the
+entire time for cgminer so avoid trying to maintain balanced numbers of them for
+specific time calls to simplify code.
+- Replace all references to the old n*sleep functions with the equivalent
+cgsleep_*s replacements.
+- timeGetTime uses huge resources on windows so revert to using timevals for its
+implementation of cgtimer_t
+- Quotient/remainder error in ms division.
+- Only grab a queued work item if we successfully grab the lock to submit work
+in bflsc_send_work
+- BTB get version from Firmware
+- Carve out the unused portions of sha2 implementation.
+- Import Aaron D. Gifford's fast sha256 implementation.
+- Increase the que_low watermarks on BFLSC for they are too low to keep the
+device busy on scanwork loops.
+- Provide cgtimer_to_timeval helper functions.
+- Provide a timeval_to_cgtime helper function to reuse values.
+- Check for thr->work_restart in restart_wait.
+- We should be using que_low to decrease scan sleep time in bflsc.
+- Prepare sleep time on bflsc if no dev needs work yet to avoid busy waiting.
+- Simplify cgsleep code for windows by using a typedef for cgtimer_t that
+resolves to clock resolution, using that internally.
+- On windows use the higher accuracy timegettime function to really get 1ms
+clock and timer accuracy.
+- Use the cgsleep reentrant function to sleep for bflsc between read results to
+account for time taken to perform reads.
+- Use 100ms delay between checking for results on all bflsc devices as the
+buffering of results mean checking more frequently just wastes CPU and causes
+more lock contention for only marginally better latencies.
+- Fix missed endtimeperiod in overrun timer on windows.
+- Make cgsleep_us_r take an int64_t for us.
+- Make the cgsleep functions build on windows.
+- Use the cgsleep reentrant function in avalon_send_task.
+- Use the reentrant cgsleep functions within the avalon_send_tasks function.
+- Set high resolution timing on windows within the cgsleep functions.
+- Use the reentrant cgsleep function to time sleeps on reading from avalon.
+- Provide reentrant versions of cgsleep functions to allow start time to be set
+separately from the beginning of the actual sleep, allowing scheduling delays to
+be counted in the sleep.
+- Make the nmsleep and nusleep functions use the new cgsleep functions
+internally till functions are migrated to the new cgsleep API.
+- Add a ms_to_timespec helper function, and create a cgsleep_ms function that
+uses absolute timers with clock_nanosleep to avoid overruns.
+- Add rt lib linkage to enable use of clock_nanosleep functions with older
+glibc.
+- Add necessary time header include to avalon driver.
+- Do a sleep of the full duration it would take to do all the work using
+clock_nanosleep in avalon_send_tasks to avoid sleep overruns before polling to
+see if it's ready.
+- Add a timeraddspec helper function.
+- Provide a us_to_timespec helper function.
+- Use the us_to_timeval helper function in the avalon driver.
+- Provide a us_to_timeval helper function.
+- Use timeval_to_spec helper in avalon driver.
+- Add helper functions to convert timespec to timeval and vice versa.
+- simplifying buffer full check
+- forking bitburner write thread function
+- making sure original Avalon is unaffected by BitBurner changes
+- changes to queueing strategy for BitBurner boards
+- Do not poll in avalon_get_results without sleeping if we have finished parsing
+a full result.
+- Add c to ambient temperature display for avalon driver.
+- BTB allow up to 1400mV as per firmware limits
+- avalon for timeout allow d='calculate it' and fix uninitialised
+- Use cloned work when finding avalon results since another thread can discard
+the work item while it's in use.
+- Provide a variant of find_work_bymidstate that returns a clone of the found
+work.
+
+
+Version 3.3.4 - 14th August 2013
+
+- API/miner.php add some % fields
+- Nonce2 stratum submission is not working with nonce2 lengths >4, revert the 
+buggy __bin2hex function and use bin2hex.
+- The write thread in avalon is only ever actually woken up by timeout so remove
+the write semaphore and use a simple sleep poll.
+- Fix warning.
+- Interrupting reads on the avalon to start writes loses data so remove the 
+cgsem_post in the read code.
+- Add room for the null byte at the end of the nonce2 string on stratum share 
+submission and zero the allocated ram.
+
+
+Version 3.3.3 - 13th August 2013
+
+-  Only perform the bin2hex on nonce2 data if it's required for stratum 
+submission, thereby removing the last conversion of that type from stratum work 
+generation.
+-  Create a work data template when receiving stratum notification, allowing a 
+simple memcpy of the merkle root avoiding more hex2bin conversions on each work 
+generation.
+-  Export the workpadding char in miner.h
+-  Avoid a potential overflow should a pool specify a large nonce2 length with 
+stratum.
+-  Avoid one more hex2bin in gen stratum work.
+-  Rename work gbt_coinbase to coinbase to be in line with pool variable name.
+-  Perform merkle bin hex2bin on stratum notify to avoid doing it on each work 
+generation.
+-  Reuse just the one pool coinbase variable in stratum, avoiding more string 
+functions and storage in gen_stratum_work on each work generation.
+-  Rename pool gbt_coinbase variable to coinbase to combine it with the stratum 
+coinbase data.
+-  Use a nonce2 offset variable for both gbt and stratum to consolidate 
+requirements on work generation.
+-  Merge pull request #474 from kanoi/master
+-  util.c update quit call for new functions
+-  use correct define for OSX in util.c
+-  miner.h inline semaphores increase information on failure
+-  util.c expand quit to show file/func/line
+-  Merge remote-tracking branch 'conman/master'
+-  Cache as much of the gbt coinbase as possible to avoid doing unnecessary 
+hex2bin conversion on every work generation with gbt.
+-  We should be using a cg_wlock initially in generating stratum and gbt work 
+before downgrading the lock.
+-  Add the ability to downgrade a write variant of the cglocks.
+-  Fix --scrypt being required before scrypt intensities on command line or not 
+working at all via config files.
+-  Cache the hex2bin of pool nonce1 in stratum, avoiding hex2bin on each work 
+generation.
+-  Cache the binary generation of coinbase1 and 2 on stratum, avoiding a hex2bin
+of coinbase1 and 2 on each work generation.
+-  cgsem - increase information on failure
+-  avalon init write_sem before use
+
+
+-  3.3.2 - 9th August 2013
+
+-  Fix uninit variable warnings.
+-  usbutils - force check every combination
+-  Fix warning.
+- Recreate curses windows on windows when a device is hotplugged to allow window
+resizing without crashing.
+- Update copyright notice.
+- Limit intensity range according to whether scrypt is in use or not.
+- Do not allow benchmark mode to be used with scrypt.
+- Add a --bflsc-overheat command which allows you to set the throttling 
+temperature for BFLSC devices or disable it.
+- Move bflsc defines to a header file.
+- avalon allow frequency to be set via the API
+- BTB voltage management via the API - and set default on startup
+- Avalon BTB allow partial work to be transferred
+- avalon_cts use correct buffer
+- miner.php format Best Share
+- remove unnecessary memcpy
+- using more concise description
+- using usb_ident
+- forgot a return
+- changes to Avalon driver for BitBurner boards
+- Revert "Sleep after sending icarus work to emulate working at 115200 baud."
+- api correct timeout stat display
+- usb timeouts - min/max also
+- log USB timeouts in API stats
+- usbutils report failed timeouts
+- usbutils ensure stats macros are using the macro arguments
+- Check for negative wait time in socket_full.
+- Fix extra argument passed to statline before.
+- Adjust socket wait timeout in recv_line according to how long we've already 
+waited to avoid a 60 second wait dropping to 1 second due to a blocked socket.
+- usbutils use a heap buffer for bulk read rather than stack
+- usbutils only one bulk transfer call per stat
+- set device_drv function noops when first add_cgpu
+- usbutils - in init only change the config if needed
+- bflsc nonce per work item stats
+- bflsc increase flush count to handle parallel work
+- force type checking on curses
+- logging - size check sprintf
+- usbutils - size check all sprintf
+- cgminer - size check all sprintf
+- size check get_datestamp/get_timestamp and remove unused cgpu->init
+- make all statline overflow safe
+- WU only needs +2 width
+- Check for a timeout in avalon_scanhash and post to the write sem if we receive
+one.
+- Decay result count in avalon more slowly to not falsely detect idle periods as
+low result return rates.
+- Count the number of miners idled in avalon to account more accurately for when
+its result return rate is too low.
+- Fix potential dereference when starting avalon with all new work.
+- Convert the decay_time function into one that truly creates an exponentially 
+decaying average over opt_log_interval.
+- Only throttle avalon clockspeed in avalon_auto in non optimal temperature 
+settings if the fanspeed has reached maximum.
+- Reinstate more aggressive <2% HW error target for avalon-auto
+- Set avalon fan min and fan max to PWM values instead of percentage.
+- Provide an --avalon-freq command line to give a valid range of frequencies for
+avalon in auto mode.
+- Set the avalon idle frequency to lowest if avalon auto is enabled and we have 
+an overheat condition.
+- Decrease avalon frequency in auto mode if we are unable to maintain the 
+temperature in the optimal range.
+- Don't count invalid nonces as hashrate for bflsc.
+- Use a more conservative upper limit of 1% for hardware errors with avalon auto
+frequency.
+- Allow the avalon fanspeed range to be passed as parameter on the command line,
+default to 20-100%
+- Just display A: and R: for difficulty accepted and rejected to preserve screen
+real estate and decrease decimal places for WU.
+- correct device DR: and remove global U:
+- Update all screen A/R to instead use DA/DR and device U to WU
+- miner.php add ASC fields
+- GPU fan rpm display 9999 when it overflows
+- bflsc get volts stats needs its own GETVOLTS
+- Support all avalon frequencies on the command line.
+- Move to slightly more relaxed timeouts for avalon.
+- MMQ turn on cps delays
+- bflsc x-link header different to documentation
+- Reset the other auto counters in avalon when idling a device.
+- usbutils/icarus include more locking to usbdev access
+- Icarus turn on cps delays by default
+- usbutils cps correct time measurement
+
+
+Version 3.3.1 - 25th June 2013
+
+- Add an avalon-auto option which enables dynamic overclocking based on hardware
+error rate for maximum effective hashrate.
+- Add an --avalon-cutoff feature which puts the avalon idle should it reach this
+temperature, defaulting to 60, re-enabling it when it gets to target
+temperature.
+- Change default avalon target temperature to 50 degrees.
+- usbutils - incorrect test for * in bus:dev
+- Redo +1 fix in bflsc.
+
+
+Version 3.3.0 - 24th June 2013
+
+- Add an --avalon-temp option to allow a user specified target temperature.
+- Demote no matching work message to verbose logging only on avalon.
+- Make the fan control on the avalon a simple PID controller with a target
+temperature of 45.
+- Demote bflsc hw error messages to verbose logging only.
+- bflsc - handle xlink timeouts by having generic IO functions
+- Demote the invalid nonce warning to log info.
+- Ignore iManufacturer for BFLSC devices since the device name will still match
+and some unbinned chips are missing it.
+- sc_count shouldn't be +1 in bflsc.
+- Use the info timeout for read_nl in getidentify bflsc.
+- Add a usb_read_nl_timeout macro.
+- bflsc try getinfo twice
+- set MSG_ASCUSBNODEV always defined
+- Hard code the preferred packet size for AMU, BLT and ICA.
+- API V1.26 update ASIC support
+- Icarus enable the read buffer for the detect nonce
+- Support new overclocking speeds for avalon: 325, 350 and 375
+- undo icarus show errno, put it as debug in ubsutils
+- icarus add errno to rerr and werr
+- Sleep after sending icarus work to emulate working at 115200 baud.
+- Use the nusleep function for sleeping after sending work in avalon.
+- Show an integer only for diff if it is one.
+- Set the avalon preferred packet size to 512.
+- Reinstate the maxPacketSize determined by the end descriptor but allow the
+driver to override it.
+- Only update hashmeter if we have done hashes or haven't updated longer than
+the log interval, fixing a us/ms error.
+- Use only one cgsem in avalon signalling when the write thread should commit
+work by reading the status bytes off during an avalon_read, minimising the
+number of usb calls and resetting from only one place.
+- Change avalon no valid work message to no matching work to match API
+terminology.
+- Use low latency usb transfers on the avalon, sleeping up to half a buffer's
+worth only if no data is returning to increase hashrate, abolish lost work and
+decrease CPU.
+- Minimise the sleep times in avalon read to avoid result loss.
+- Use a half nonce range before cycling through avalon's scanwork to ensure it
+gets a chance to fill work if time is tight for the write thread to signal a
+wakeup.
+- Temporarily limit usb transfer sizes to 512 till we provide a way for each
+driver to choose the upper limit.
+- Increase watchdog sick time to longer than it takes for a pool to be detected
+dead.
+- Limit USB transfers to the max size reported by the descriptors.
+- Increase the BFLSC timeout to allow the maximum number of results to be
+returned for BAS in time.
+- Decrease BAL and BAS latency to be just larger than one result read.
+- disable curses device resize that crashes on windows
+- BFLSC latest firmware has its own thermal cutoff set to 90, so use the same
+value in case we have an old firmware that isn't throttling by itself.
+- Drop watermark low limits for bflsc.
+- Set the fanspeed on bflsc to max if we don't know the temperature.
+- Use a low watermark for queueing mandatory work on bflsc instead of zero.
+- Only mandatorily grab the bflsc mutex on submitting work when the queue is
+empty.
+- Adjust bflsc v2 watermarks.
+- Only increase sleep time on bflsc if the queue isn't emptying at all over the
+sleep duration.
+- Fix warning.
+- bflsc yet more API stats
+- bflsc add some more API stats
+- bflsc correct firmware matching
+- bflsc correct comment
+- Fixed Commands with No params
+- bflsc driver support for v2 firmware
+- Odd Issues
+- Fixed Python Example
+- Added Python Api Example
+- Added Python Api Example
+- Multiplier fail for microseconds vs milliseconds when updating hashmeter in
+hash_queued_work.
+- Only make threads report in/out across the actual driver code and update their
+status on reporting out as well as in.
+- usbutils initialise close key/sem
+- usbutils cleanup linux semaphores on release
+- Difficulty should be unconditionally byteswapped, not swapped to big endian.
+- We should be setting cancelstate, not canceltype when disabling it for usb
+locking.
+- Pthread cancel state should be set to disable on usb DEVLOCK.
+- Fanauto on bflsc is Z9X according to the source code, not 5 as per the draft
+protocol document.
+
+
+Version 3.2.2 - 16th June 2013
+
+- Record and report USB pipe errors via API stats
+- Suspend stratum connections when we know they've failed and don't try to recv
+data from them once the socket no longer exists.
+- Pipe error is quite common on usb3 so drop logging to verbose level only.
+- ocl.c fix applog warnings on windows
+- applog/quit fix GPU errors created
+- usbutils - DEVLOCK other usbdev access
+- applog usb device list can be > LOGBUFSIZ
+- fix windows log warnings
+- logging remove extra added <LF>
+- remove varargs from logging/quit/in general as much as possible
+- Don't yield when downgrading a cg ilock.
+- Don't yield on grabbing the read lock variant of cglocks.
+- Off by one error in device count for display.
+- Don't display devices beyond the most_devices count in the curses status.
+- Only display as many device rows as the maximum live existed at any time.
+- usb lock out use cg locks
+- usb lock out transfers during open/close
+- Add error message to libusb pipe error
+- Differentiate libusb control transfer pipe errors from transfer errors since
+they're not fatal.
+- Create a usb_bulk_transfer wrapper for libusb_bulk_transfer to cope with pipe
+errors.
+- Only show efficiency in pool information for pools that don't support local
+work generation.
+- Create a pool_localgen bool function for testing when a pool can generate work
+locally.
+- ignore file that is generated on Macs
+- compile unix code on Mac OS X fixes not finding the config file in $HOME
+- Use mining start time for device MH/U calculations
+- Decrease the sleep duration before reading in avalon to not let the read
+buffer overflow.
+- Failure to read and write on pseudo semaphores on apple happens routinely on
+shut down so should not be a quit error, just a warning.
+- Unlock usb dev lock in the same place in usbutils.
+- Sleep if the avalon buffer is empty and we've requested a read to allow the
+write thread to take precedence.
+- Yield after releasing a lock in case we are on a device with limited CPU
+resources.
+- Add the cgpu_info structure before avalon reset.
+- Tidy up DEVLOCK/UNLOCK to have consistent use of the pstate variable without
+needing brace level match.
+- Icarus driver elaspsed timeout shouldn't be just USB I/O
+- usbutils avoid leaving devlock locked when thread cancelled
+- MMQ fix nodev failure caused by changes
+- ubsutils lock all access to nodev and cgusb
+- USB make device_path handled by usbutils
+- tidy up free in device detect functions
+- USB control creation and free of cgpu
+- Add FAQ regarding Work Utility.
+- Throttling the BFLSC at 80 seems to prevent generating garbled responses of
+higher temps.
+- Return after failed bin2hex conversion in bflsc.
+- Demote failed hex2bin result to LOG_INFO and check return result in
+driver-bflsc to avoid doing find_work_by_midstate.
+- Set BFLSC fan speed coarsely to keep it under 60 or auto as per specs saying
+it tries to stay below 60.
+- Limit usbutils LATENCY_STD to 32ms to keep transfers under 512 bytes.
+- Move macro definition to bflsc driver
+- Use a longer timeout for retrieving bflsc details.
+- Add a usb_read_ok_timeout wrapper to cope with slow init'ing devices.
+- cgsem_post after creating the thread info
+- Fix build.
+- Use cgsem structures instead of the flaky pings in the work queue to start
+mining threads and remove the unused thr_info_freeze function.
+
+
+Version 3.2.1 - 7th June 2013
+
+- Shorten the avalon statline to fit in the curses interface and show the lowest
+speed fan cooling the asic devices.
+- Set usbdev in usbutils after checking for nodev to avoid trying to access a
+dereferenced value.
+- AMU usbstatus correct name from enable UART
+- Icarus AMU enable the UART
+- Only libusb close if libusb release succeeds.
+- Failed reads and writes on cgsem_post and cgsem_wait should be extremely rare.
+- Implement cgminer specific cgsem semaphores to imitate unnamed semaphore
+behaviour on osx which does not support them.
+- Set cgusb->buffer to NULL when doing usb_buffer_disable.
+- Temporarily fix apple not having semtimedop by ignoring the timeout value.
+- BFLSC enable buffered USB reading
+- Icarus use buffered USB reading
+- bflsc & icarus use usb_ftdi_set_latency
+- usb_ftdi_set_latency LOG_ERRs if called incorrectly
+- add usb_ftdi_set_latency
+- usbutils optional read buffering
+- Set the avalon read transfer latency to avoid sleeping when no data is
+returned after very short latency settings.
+- correct bflsc BFLSC_BUFSIZ max calculation
+- Fix build for !curses
+- restore max code - since timeout is unsigned
+- compile warning - remove unused max
+- usb set FTDI latency higher to minimise status bytes
+- Check for zero timeout on _usb_write.
+- Check for zero timeout in usb read.
+- Define a minimum polling time based on frequency of mandatory updates of ftdi
+responses at 40ms.
+- Sleep right up to the timeout instead of the first half if we find ourselves
+polling in _usb_read
+- Enforce half timeout sized sleeps in usb_read if we find the device is not
+respecting libusb timeouts to avoid polling frequently.
+- Add more ASIC documentation.
+- Update README
+- Remove start device limitation on log window size to allow it to get larger
+with hotplugged devices.
+- Switch logsize after hotplugging a device.
+- Change switch_compact function name to switch_logsize to be used for other
+changes.
+- Only adjust cursor positions with curses locked.
+- devs display - fix GPU duplicate bug
+- Do not hotplug enable a device if devices have been specified and the hotplug
+device falls outside this range.
+- Change the --device parameter parsing and configuration to use ranges and
+comma separated values.
+- basic copyright statement in API.java
+- devs display - show ZOMBIEs after all others
+- Modify scrypt kernel message.
+- Check for pool_disabled in wait_lp_current
+- usbutils semun use proper def for linux which fixes OSX also
+- Check for pool enabled in cnx_needed.
+- Icarus add delays during intialisation
+- Update documentation.
+- Update copyrights of modified files.
+
+
+Version 3.2.0 - 31st May 2013
+
+- Add FAQ about windows USB keyboards and hotplug interactions.
+- Fix mingw build warnings in icarus driver.
+- Make usb_ftdi_cts use the _usb_transfer_read function.
+- Update ASIC-README with avalon info regarding default behaviour.
+- Break out of idling loop in avalon_idle if the buffer is full.
+- Provide some defaults for avalon if none are specified and do not try to claim
+the device if it fails to reset with them and no options are specified.
+- usbutils automatically track IO errors
+- usbutils allow a short wait for resources to be released
+- correct semaphore timeout comment
+- Set the fanspeed to the nominal chosen for GPUs.
+- Inverted sem_init logic.
+- Document avalon options in ASIC-README
+- Do avalon driver detection last as it will try to claim any similar device and
+they are not reliably detected.
+- Clamp initial GPU fanspeed to within user specified range.
+- Use a counting semaphore to signal the usb resource thread that it has work to
+do.
+- Avalon fan factor is already multiplied into the info values.
+- Get rid of zeros which corrupt display.
+- Logic fail on minimum fanspeed reporting.
+- Provide a workaround for fan0 sensor not being used on avalon and pad fan RPM
+with zeros.
+- Add ambient temp and lowest fan RPM information to avalon statline.
+- Display max temperature and fanspeed data for avalon.
+- Set devices to disabled after they exit the hashing loops to prevent the
+watchdog thread from trying to act on them.
+- Add avalon driver to hotplug.
+- Shut down the avalon mining thread if the device disappears.
+- Check for no usb device in usb_ftdi_cts
+- Check for valid usbdev in _usb_read in case the device has been unplugged.
+- Scanhash functions perform driver shutdown so don't repeat it.
+- Change the opencl shutdown sequence.
+- Send the shutdown message to threads and do the thread shutdown functions
+before more forcefully sending pthread_cancel to threads.
+- Use the cgpu_info shutdown to determine when to stop the avalon read and write
+threads.
+- Use semaphores to signal a reset to pause the read thread while the write
+thread does the actual reset, making all writes come from the same place.
+- Remove now unneeded fgpautils.h include from avalon.
+- usb_transfer_read should also not play with the endianness.
+- Use the USB wrappers for avalon, telling usbutils that we want the raw data.
+- Use separate ep for avalon tasks vs avalon reset and do not loop in write
+indefinitely.
+- Remove unneeded function and checks in avalon write code.
+- CMR handle baud options
+- work_restart is reset within the queued hash work loop.
+- Fix avalon shutdown sequence.
+- Execute driver shutdown sequence during kill_work.
+- Use nusleep in avalon_get_results in place of nmsleep.
+- Provide an nusleep equivalent function to nmsleep.
+- usb/ica add more (incomplete) CMR settings
+- Give a buffer of perceived results in avalon during idle periods to allow for
+results once it becomes active again.
+- libusb_control_transfer are meant to be endian specific, but host endianness
+so no conversion is needed.
+- Reuse old MTX Handle
+- usbutils check all memory allocation
+- usb separate thread for resource locking and modified windows locking code
+- Icarus report data direction with comms errors
+- Set the read and write threads for avalon to not cancel within libusb
+functions and wait for the threads to pthread_join on shutdown.
+- Offset needs to be incremented after avalon reads.
+- Make the avalon_read function parse the ftdi responses appopriately.
+- Use the avalon read timeout to completion if no data has been read.
+- wait_avalon_ready should only be used before writes.
+- Ask for the correct amount to read in avalon get results.
+- Spawn the avalon read thread first with info->reset set to discard any data
+till work is adequately queued.
+- Use direct usb read commands to avoid ftdi data being automatically cut off in
+avalon reads.
+- Do a simple usb_read_once for the avalon result from a reset command.
+- Make sure avalon is ready to receive more usb commands before sending them.
+- Implement avalon_ready and avalon_wait_ready functions for when usb is ready
+to receive commands.
+- avalon_read should not loop but just return whatever it has succeeded in
+reading.
+- Set avalon_info to device data void struct.
+- Specify avalon in avalon_reset.
+- First pass rewriting serialdev into direct usb dev for avalon driver.
+- Define a cts equivalent for direct usb and use it for avalon driver full.
+- Compile usbutils into avalon driver.
+- Check results come in at least at 2/3 the rate they should be on avalon and if
+not, reset it.
+- Give a warning but don't reset if the avalon buffer is full early.
+- Discard any reads obtained from the avalon get results thread during a reset.
+- Differentiate initial reset in avalon from subsequent ones.
+- Perform a mandatory reset if the avalon buffer signals it's full before it has
+queued its normal quota of work.
+- Wait till buffer is cleared after sending idle tasks to avalon before
+returning from avalon_idle.
+- Lock qlock mutex during reset from read thread in avalon to prevent more work
+being sent till the reset is over.
+- Reset avalon if we continue to be unable to send all the work items.
+- Add avalon reset response to debugging output.
+- Do a wait_avalon_ready before sending a reset code.
+- Iterate over spare bytes in the avalon result returned from a reset request
+trying to find the beginning of the reset.
+- Idle avalon after reset.
+- Check for nothing but consecutive bad results on avalon and reset the FPGA if
+it happens.
+- Make submit_nonce return a bool for whether it's a valid share or not.
+- Unset the work restart flag sooner in avalon_flush_work to avoid re-entering
+the flush work function and just reset the queued counter instead of rotating
+the array to avoid runs of no valid work.
+- Implement an avalon_flush_work function for work restarts.
+- Shut down avalon read and write threads and idle the miners on closing it.
+- Tighter control over work submissions in avalon allows us to use a smaller
+array.
+- Rotate avalon array to reset the queued count before releasing the lock so
+work will always be available on next pass.
+- Move avalon read thread start till after conditional wait, store idle status
+in avalon_info and use it to determine whether an error is appropriate or not.
+- Wait till the avalon_send_tasks thread has filled the avalon with idle work
+before starting the avalon_get_results thread.
+- Use AVA_GETS_OK macro in avalon_read.
+- Do all writes on avalon with a select() timeout to prevent indefinite blocking
+and loop if less than desired is written.
+- Check explicitly that ava_buffer_full equals the macro.
+- Send initial reset as an avalon task to remove avalon_write function.
+- avalon_clear_readbuf is no longer required.
+- Check for 2 stray bytes on avalon reset.
+- Create a separate thread for handling all work and idle submission to the
+avalon which messages the scanhash function it has completed to update
+statistics.
+- usbutils ensure it compiles without stats
+- usbutils include transfer mode in usbstats
+- Give the avalon get results thread name the device number as well.
+- Make sure we're not adjusting temps on every successful work retrieval on
+avalon.
+- Count missing work items from behind a successful work read in avalon as well.
+- Change message for work not found in avalon parser.
+- usbutils handle bulk_transfer partial writes
+- Simplify debugging and only discard from avalon read buffer if at least one
+full result has been discarded.
+- Only display discarded bytes in avalon if they're not used as nonces.
+- Only loop once through avalon_parse_results, but do so after timeouts as well.
+- Only debug and move ram if spare bytes exist in avalon buffer.
+- Remove off by one error.
+- Inverted logic.
+- Add more debugging to avalon reads.
+- Convert unsigned size_ts to ints for parsing avalon messages.
+- Cope with not finding nonces in avalon parsing gracefully by not overflowing
+buffers.
+- Adjust avalon temp values on one lot of valid nonces from the parser.
+- Created a threaded message parser for avalon reads.
+- Avalon_wait_write is not effective during resets so do it after going idle.
+- Send only a single byte reset.
+- Repeat going idle after avalon reset, and wait for write ready before sending
+each reset request instead of some arbitrary sleep time.
+- Timeouts on avalon_read and avalon_write should be 100ms.
+- Don't close avalon after detecting it until we're cleaning up, instead using
+reset for comms failures.
+- Check for avalon_wait_write before sending reset command.
+- Sleep in avalon_write_ready.
+- Make avalon_wait_write a bool function and check its return value.
+- Show how many idle tasks are sent to avalon if it aborts on buffer full.
+- Reset avalon->device_fd after it is closed.
+- Create an avalon_wait_write function that is used before sending avalon idle
+command.
+- Avoid repeating avalon_idle in do_avalon_close and extra sleep.
+- Pass fd to avalon_idle.
+- Do avalon_reset after info structure is set up.
+- Rework avalon reset sequence to include idling of chips and waiting for them
+to go idle followed by 2nd reset and then checking result.
+- Do a non-blocking read of anything in the avalon buffer after opening the
+device.
+- Assign the avalon info data to the device_data in cgpu_info.
+- thread shutdown is different on windows
+- usbutils make all windows timeouts 999ms
+- usb add another Cairnsmore1 USB chip
+- icarus do the full detect test twice if required
+- CMR usb config guess
+- usb add transfer_read and commented out in icarus
+- usbutils allow unrounded control transfers
+- icarus ICA initialisation
+- icarus report err on read failure
+- icarus correct device_id and use device_data for icarus_info
+- miner.h remove unused device_file and add device_data
+- miner.h icarus no long uses fd
+- icarus AMU config transfers
+- Create a logwin_update function which mandatorily updates the logwin and use
+it when input is expected to prevent display refresh delays.
+- usbutils force an unknown IDENT for zero
+- icarus set default options/timing based on device
+- Must unlock curses as well in logwin_update.
+- Create a logwin_update function which mandatorily updates the logwin and use
+it when input is expected to prevent display refresh delays.
+- icarus report usb write error information
+- Add name to icarus copyright notice.
+- Check for *pth dereference on pthread_join
+- usbutils name latency correctly
+- Check for restart before buffering more reads in Icarus.
+- Icarus should timeout if it's greater than the timeout duration even if it's
+receiving data.
+- We should check for amount buffered in icarus get_nonce against amount already
+received.
+- Make mining threads report out during work submission.
+- submit_work_async is no longer used directly by driver code.
+- Fix first read timeout on icarus get nonce.
+- Retry icarus_initialise if the first read attempt fails.
+- Properly pthread_join miner threads on shutdown.
+- Properly pthread_join miner threads on shutdown.
+- Use a persistent single separate thread for stratum share submission that uses
+workqueues since all stratum sends are serialised.
+- All stratum calls to recv_line are serialised from the one place so there is
+no need to use locking around recv().
+- Only allow the mining thread to be cancelled when it is not within driver
+code, making for cleaner shutdown and allowing us to pthread_join the miner
+threads on kill_work().
+- Only allow the mining thread to be cancelled when it is not within driver
+code, making for cleaner shutdown and allowing us to pthread_join the miner
+threads on kill_work().
+- Set pool->probed to true after an attempt to resolve the url via stratum code.
+- icarus test nodev everywhere
+- usbutils/icarus separate FTDI transfer values and more debug
+- add icarus to hotplug
+- usbutils add rest of icarus
+- simple serial-USB python test script
+- icarus->USB v0.1 incomplete - missing initialise()
+- README spelling
+- Update documentation for icarus switch to USB
+- Add USB rules for supported USB devices
+- switch icarus configuration to usb
+- usbutils new command for icarus
+- usb add a numeric sub-indentity for each name
+- usbutils - make FTDI handling automatic
+- fix duplicate name
+- usbutils set Black Arrow Lancelot's as BAL and match the lot->llt name
+- usbutils identify Icarus devices
+- libusb_control_transfer 16 bit words are endian specific.
+- usb_applog separate amt display
+- Show pool difficulty more verbosely if it changes via stratum.
+- Attribute whatever stats we can get on untracked stratum shares based on
+current pool diff.
+- Provide a --lowmem option which does not cache shares on failed submission to
+prevent low memory hardware (eg Avalon) from crashing.
+- Update util.c
+
+
+Version 3.1.1 - May 11th, 2013
+
+- Use a discrete device target for scrypt that dynamically changes to ensure we
+still report a work utility even if no shares are submitted such as in solo
+mining.
+- Make set_work_target a function to set a specified char as target for use
+elsewhere.
+- Further consolidate the hash regeneration between sha and scrypt doing it only
+once and always checking the share diff for both before submission.
+- Regenerate the hash before checking the share diff in hashtest().
+- Minor typo.
+- Use a scantime of 30 seconds for scrypt if none is specified.
+- Support more shares to be returned for scrypt mining.
+- Update the write config to properly record device entries and remove disabled
+option.
+- Show a different warning and loglevel for failure to resolve a URL on first or
+subsequent testing of stratum pool URLs.
+- Fix the problem of seting up termio of ttyUSB0 for icarus. the CSIZE  is the
+mask of CS2/4/8 From: navyxliu <navy.xliu@gmail.com>
+- Set all stratum sockets to nonblocking to avoid trying to use MSG_DONTWAIT on
+windows.
+- Fix warnings on win32 build.
+- Only use MSG_NOSIGNAL for !win32 since it doesn't exist on windows.
+- Use MSG_NOSIGNAL on stratum send()
+- Set TCP_NODELAY for !linux for raw sockets.
+- Use TCP_NODELAY with raw sockets if !opt_delaynet
+- Make raw sockets compile on windows
+- Recheck select succeeds on EWOULDBLOCK for stratum.
+- usbutils/mmq fixed size usb_read default to wait for all data
+- usbutils optional (disabled by default) dev debug
+- Add an ftdi usb read macro without newline
+- Avalon usb interface should be 0.
+- Add more debug for failure to USB init.
+- Recv() should all be non-blocking for raw sockets in stratum.
+- Change verbosity and error for getaddrinfo warnings in setup stratum socket.
+- Free servinfo after p is checked in setup stratum socket.
+- Use raw sockets without curl for stratum communications.
+- Sacrifice curl handle memory on stratum disconnects on all versions of libcurl
+to avoid curl corruption.
+- Don't use TCP_NODELAY if opt_delaynet is enabled with stratum.
+- Fix warnings in avalon driver.
+- Make FULLNONCE an ULL to fix a warning on 32 bit.
+- ztx correct applog typing
+- ocl correct applog typing
+- util correct applog typing
+- api correct applog typing
+- cgminer correct applog typing
+- scrypt correct applog typing
+- bfl correct applog typing
+- ica correct applog typing
+- mmq correct applog typing
+- adl fix trailing %
+- usbutils correct applog typing
+- applog - force type checking
+- Simplify the many lines passed as API data in the avalon driver now that the
+API does not need persistent storage for the name.
+- Duplicate the name string always in api_add_data_full to not need persistent
+storage for names passed to it.
+- Add extra matching work count data in API for Avalon with 4 modules.
+
+
+Version 3.1.0 - April 28th, 2013
+
+- va_copy is meant to be matched by a va_end in log_generic.
+- usbutils remove_in_use break
+- usbutils remove_in_use missing prev
+- usbutils missing add_in_use
+- Clean up summary slightly better on exit.
+- Make the scan sleep time after scanwork in bflsc dynamic to keep queues
+between watermark levels.
+- Remove unused temp counts in bflsc.
+- Calculate a rolling 5 min average set of temperatures for bflsc.
+- Damp the display of voltage for BFLSC devices.
+- Damp the temperature display measurement for bflsc since it fluctuates so
+wildly.
+- bflsc add volt stats
+- Handle failed tolines command in bflsc driver.
+- Can use a read lock instead of a write lock in bflsc scanwork.
+- Since we are filling a queue on the bflsc devices, there is no need to run
+through scanwork frequently provided we use the restart_wait function to abort
+early during a block change.
+- Remove flushed work in bfl scanwork from the hash table.
+- Set correct device in process_nonces in bflsc driver.
+- bflsc add work reply INPROCESS: missing from the spec
+- bflsc put in some error messages not yet written
+- bflsc get completed hashes as late as possible
+- Fix potential memory leak with unused work items in bflsc_queue_full
+- Reverse bools in bflsc_queue_full
+- Avoid recursive loop calling correct function instead.
+- bflsc fix details identification
+- Differentiate BFLSC device from regular bitforce and give warning if no
+support is compiled in.
+- util.c str_text make a fully text readable version of str
+- BFLSC fix FPGA identity overlap
+- Locking error in bflsc_send_work
+- Use htobe32 function for converting nonce in bflsc.
+- Replace deprecated bzero with memset in bflsc driver.
+- Fix compilation of bflsc driver without opencl.
+- Check for realloc failures in bflsc driver.
+- Check for failure to calloc in bflsc driver.
+- Trivial style change
+- Use copy_time function in bflsc driver.
+- Use cgtime in bflsc driver and update copyright notice.
+- Use a separate function for bfl initialise that doesn't require locking.
+- Fix BFLSC building.
+- bflsc v0.1
+
+
+Version 3.0.1 - April 25th, 2013
+
+- Bypass attempting to read and save binary files on OSX to avoid crashes on >1
+GPU.
+- Receive failures in recv_line should unconditionally fail.
+- Use sock_blocks in api.c
+- Use sock_blocks function for stratum send and receive.
+- Create an OS specific sock_blocks function.
+
+
 Version 3.0.0 - April 22nd, 2013
 
+- Further fix distdir for hexdump.c
+- Fix build and distdir.
 - Remove all CPU mining code.
 - compile on win32
 - Update SCRYPT README with improved hashrates for 7970.
@@ -76,7 +1185,6 @@ consecutively.
 - More README faqs.
 - Yet more README faqs.
 - Add more faqs to README.
-- Merge branch 'master' into avalon-dev
 - Wrap result wrong tests in avalon scanhash in unlikely() and only consider a
 hash count of zero wrong if a restart wasn't issued.
 - avalon: if result_wrong >= get_work_count jump out the read loop
@@ -134,8 +1242,6 @@ scanhash.
 <xiangfu@openmobilefree.net>
 - Remove inappropriate memset of struct avalon result which was corrupting fan
 values.
-- Fix warning with no curses built in.
-- Bump version to 2.11.4
 - Fix warning with no curses built in.
 - Bump version to 2.11.4
 - Add API support for Avalon.

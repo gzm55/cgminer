@@ -8,11 +8,32 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <jansson.h>
+#ifdef HAVE_LIBCURL
 #include <curl/curl.h>
+#else
+typedef char CURL;
+extern char *curly;
+#define curl_easy_init(curl) (curly)
+#define curl_easy_cleanup(curl) {}
+#define curl_global_cleanup() {}
+#define CURL_GLOBAL_ALL 0
+#define curl_global_init(X) (0)
+#endif
+#include <sched.h>
+
 #include "elist.h"
 #include "uthash.h"
 #include "logging.h"
 #include "util.h"
+#include <sys/types.h>
+#ifndef WIN32
+# include <sys/socket.h>
+# include <netdb.h>
+#endif
+
+#ifdef USE_USBUTILS
+#include <semaphore.h>
+#endif
 
 #ifdef HAVE_OPENCL
 #ifdef __APPLE_CC__
@@ -106,12 +127,8 @@ static inline int fsync (int fd)
  #include "ADL_SDK/adl_sdk.h"
 #endif
 
-#ifdef HAVE_LIBUSB
+#ifdef USE_USBUTILS
   #include <libusb.h>
-#endif
-
-#ifdef USE_ZTEX
-  #include "libztex.h"
 #endif
 
 #ifdef USE_USBUTILS
@@ -201,20 +218,46 @@ static inline int fsync (int fd)
 #endif
 #endif
 
+/* No semtimedop on apple so ignore timeout till we implement one */
+#ifdef __APPLE__
+#define semtimedop(SEM, SOPS, VAL, TIMEOUT) semop(SEM, SOPS, VAL)
+#endif
+
 #define MIN(x, y)	((x) > (y) ? (y) : (x))
 #define MAX(x, y)	((x) > (y) ? (x) : (y))
 
+/* Put avalon last to make it the last device it tries to detect to prevent it
+ * trying to claim same chip but different devices. Adding a device here will
+ * update all macros in the code that use the *_PARSE_COMMANDS macros for each
+ * listed driver. */
+#define FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
+	DRIVER_ADD_COMMAND(bitforce) \
+	DRIVER_ADD_COMMAND(icarus) \
+	DRIVER_ADD_COMMAND(modminer)
+
+#define ASIC_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
+	DRIVER_ADD_COMMAND(bflsc) \
+	DRIVER_ADD_COMMAND(bitfury) \
+	DRIVER_ADD_COMMAND(avalon) \
+	DRIVER_ADD_COMMAND(klondike)
+
+#define DRIVER_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
+	DRIVER_ADD_COMMAND(opencl) \
+	FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
+	ASIC_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
+	DRIVER_ADD_COMMAND(cpu) \
+
+#define DRIVER_ENUM(X) DRIVER_##X,
+#define DRIVER_PROTOTYPE(X) struct device_drv X##_drv;
+
+/* Create drv_driver enum from DRIVER_PARSE_COMMANDS macro */
 enum drv_driver {
-	DRIVER_OPENCL = 0,
-	DRIVER_ICARUS,
-	DRIVER_BITFORCE,
-	DRIVER_MODMINER,
-	DRIVER_ZTEX,
-	DRIVER_CPU,
-	DRIVER_BFLSC,
-	DRIVER_AVALON,
+	DRIVER_PARSE_COMMANDS(DRIVER_ENUM)
 	DRIVER_MAX
 };
+
+/* Use DRIVER_PARSE_COMMANDS to generate extern device_drv prototypes */
+DRIVER_PARSE_COMMANDS(DRIVER_PROTOTYPE)
 
 enum alive {
 	LIFE_WELL,
@@ -279,7 +322,7 @@ struct gpu_adl {
 };
 #endif
 
-extern void blank_get_statline_before(char *buf, struct cgpu_info __maybe_unused *cgpu);
+extern void blank_get_statline_before(char *buf, size_t bufsiz, struct cgpu_info __maybe_unused *cgpu);
 
 struct api_data;
 struct thr_info;
@@ -292,12 +335,12 @@ struct device_drv {
 	char *name;
 
 	// DRV-global functions
-	void (*drv_detect)();
+	void (*drv_detect)(bool);
 
 	// Device-specific functions
 	void (*reinit_device)(struct cgpu_info *);
-	void (*get_statline_before)(char *, struct cgpu_info *);
-	void (*get_statline)(char *, struct cgpu_info *);
+	void (*get_statline_before)(char *, size_t, struct cgpu_info *);
+	void (*get_statline)(char *, size_t, struct cgpu_info *);
 	struct api_data *(*get_api_stats)(struct cgpu_info *);
 	bool (*get_stats)(struct cgpu_info *);
 	void (*identify_device)(struct cgpu_info *); // e.g. to flash a led
@@ -332,6 +375,7 @@ struct device_drv {
 
 	/* Highest target diff the device supports */
 	double max_diff;
+	double working_diff;
 };
 
 extern struct device_drv *copy_drv(struct device_drv*);
@@ -417,18 +461,10 @@ struct cgpu_info {
 	int device_id;
 	char *name;
 	char *device_path;
-	FILE *device_file;
-	union {
-#ifdef USE_ZTEX
-		struct libztex_device *device_ztex;
-#endif
+	void *device_data;
 #ifdef USE_USBUTILS
-		struct cg_usb_device *usbdev;
+	struct cg_usb_device *usbdev;
 #endif
-#if defined(USE_ICARUS) || defined(USE_AVALON)
-		int device_fd;
-#endif
-	};
 #ifdef USE_AVALON
 	struct work **works;
 	int work_array;
@@ -437,6 +473,12 @@ struct cgpu_info {
 #endif
 #ifdef USE_USBUTILS
 	struct cg_usb_info usbinfo;
+	int usb_bulk_writes;
+	int usb_bulk_reads;
+	int usb_wlock_total_wait;
+	int usb_rlock_total_wait;
+	int usb_wlock_max_wait;
+	int usb_rlock_max_wait;
 #endif
 #ifdef USE_MODMINER
 	char fpgaid;
@@ -453,8 +495,10 @@ struct cgpu_info {
 	bool nonce_range;
 	bool polling;
 	bool flash_led;
+#endif /* USE_BITFORCE */
+#if defined(USE_BITFORCE) || defined(USE_BFLSC)
 	pthread_mutex_t device_mutex;
-#endif
+#endif /* USE_BITFORCE || USE_BFLSC */
 	enum dev_enable deven;
 	int accepted;
 	int rejected;
@@ -538,6 +582,10 @@ struct cgpu_info {
 	pthread_rwlock_t qlock;
 	struct work *queued_work;
 	unsigned int queued_count;
+
+	bool shutdown;
+
+	struct timeval dev_start_tv;
 };
 
 extern bool add_cgpu(struct cgpu_info*);
@@ -557,6 +605,7 @@ struct thr_info {
 	bool		primary_thread;
 
 	pthread_t	pth;
+	cgsem_t		sem;
 	struct thread_q	*q;
 	struct cgpu_info *cgpu;
 	void *cgpu_data;
@@ -693,18 +742,32 @@ endian_flip128(void __maybe_unused *dest_p, const void __maybe_unused *src_p)
 }
 #endif
 
-extern void quit(int status, const char *format, ...);
+extern void _quit(int status);
 
-static inline void mutex_lock(pthread_mutex_t *lock)
+#define mutex_lock(_lock) _mutex_lock(_lock, __FILE__, __func__, __LINE__) 
+#define mutex_unlock_noyield(_lock) _mutex_unlock_noyield(_lock, __FILE__, __func__, __LINE__) 
+#define wr_lock(_lock) _wr_lock(_lock, __FILE__, __func__, __LINE__) 
+#define rd_lock(_lock) _rd_lock(_lock, __FILE__, __func__, __LINE__) 
+#define rw_unlock(_lock) _rw_unlock(_lock, __FILE__, __func__, __LINE__) 
+#define mutex_init(_lock) _mutex_init(_lock, __FILE__, __func__, __LINE__) 
+#define rwlock_init(_lock) _rwlock_init(_lock, __FILE__, __func__, __LINE__) 
+
+static inline void _mutex_lock(pthread_mutex_t *lock, const char *file, const char *func, const int line)
 {
 	if (unlikely(pthread_mutex_lock(lock)))
-		quit(1, "WTF MUTEX ERROR ON LOCK!");
+		quitfrom(1, file, func, line, "WTF MUTEX ERROR ON LOCK! errno=%d", errno);
+}
+
+static inline void _mutex_unlock_noyield(pthread_mutex_t *lock, const char *file, const char *func, const int line)
+{
+	if (unlikely(pthread_mutex_unlock(lock)))
+		quitfrom(1, file, func, line, "WTF MUTEX ERROR ON UNLOCK! errno=%d", errno);
 }
 
 static inline void mutex_unlock(pthread_mutex_t *lock)
 {
-	if (unlikely(pthread_mutex_unlock(lock)))
-		quit(1, "WTF MUTEX ERROR ON UNLOCK!");
+	mutex_unlock_noyield(lock);
+	sched_yield();
 }
 
 static inline int mutex_trylock(pthread_mutex_t *lock)
@@ -712,44 +775,56 @@ static inline int mutex_trylock(pthread_mutex_t *lock)
 	return pthread_mutex_trylock(lock);
 }
 
-static inline void wr_lock(pthread_rwlock_t *lock)
+static inline void _wr_lock(pthread_rwlock_t *lock, const char *file, const char *func, const int line)
 {
 	if (unlikely(pthread_rwlock_wrlock(lock)))
-		quit(1, "WTF WRLOCK ERROR ON LOCK!");
+		quitfrom(1, file, func, line, "WTF WRLOCK ERROR ON LOCK! errno=%d", errno);
 }
 
-static inline void rd_lock(pthread_rwlock_t *lock)
+static inline void _rd_lock(pthread_rwlock_t *lock, const char *file, const char *func, const int line)
 {
 	if (unlikely(pthread_rwlock_rdlock(lock)))
-		quit(1, "WTF RDLOCK ERROR ON LOCK!");
+		quitfrom(1, file, func, line, "WTF RDLOCK ERROR ON LOCK! errno=%d", errno);
 }
 
-static inline void rw_unlock(pthread_rwlock_t *lock)
+static inline void _rw_unlock(pthread_rwlock_t *lock, const char *file, const char *func, const int line)
 {
 	if (unlikely(pthread_rwlock_unlock(lock)))
-		quit(1, "WTF RWLOCK ERROR ON UNLOCK!");
+		quitfrom(1, file, func, line, "WTF RWLOCK ERROR ON UNLOCK! errno=%d", errno);
+}
+
+static inline void rd_unlock_noyield(pthread_rwlock_t *lock)
+{
+	rw_unlock(lock);
+}
+
+static inline void wr_unlock_noyield(pthread_rwlock_t *lock)
+{
+	rw_unlock(lock);
 }
 
 static inline void rd_unlock(pthread_rwlock_t *lock)
 {
 	rw_unlock(lock);
+	sched_yield();
 }
 
 static inline void wr_unlock(pthread_rwlock_t *lock)
 {
 	rw_unlock(lock);
+	sched_yield();
 }
 
-static inline void mutex_init(pthread_mutex_t *lock)
+static inline void _mutex_init(pthread_mutex_t *lock, const char *file, const char *func, const int line)
 {
 	if (unlikely(pthread_mutex_init(lock, NULL)))
-		quit(1, "Failed to pthread_mutex_init");
+		quitfrom(1, file, func, line, "Failed to pthread_mutex_init errno=%d", errno);
 }
 
-static inline void rwlock_init(pthread_rwlock_t *lock)
+static inline void _rwlock_init(pthread_rwlock_t *lock, const char *file, const char *func, const int line)
 {
 	if (unlikely(pthread_rwlock_init(lock, NULL)))
-		quit(1, "Failed to pthread_rwlock_init");
+		quitfrom(1, file, func, line, "Failed to pthread_rwlock_init errno=%d", errno);
 }
 
 /* cgminer locks, a write biased variant of rwlocks */
@@ -766,15 +841,16 @@ static inline void cglock_init(cglock_t *lock)
 	rwlock_init(&lock->rwlock);
 }
 
-/* Read lock variant of cglock */
+/* Read lock variant of cglock. Cannot be promoted. */
 static inline void cg_rlock(cglock_t *lock)
 {
 	mutex_lock(&lock->mutex);
 	rd_lock(&lock->rwlock);
-	mutex_unlock(&lock->mutex);
+	mutex_unlock_noyield(&lock->mutex);
 }
 
-/* Intermediate variant of cglock */
+/* Intermediate variant of cglock - behaves as a read lock but can be promoted
+ * to a write lock or demoted to read lock. */
 static inline void cg_ilock(cglock_t *lock)
 {
 	mutex_lock(&lock->mutex);
@@ -793,11 +869,25 @@ static inline void cg_wlock(cglock_t *lock)
 	wr_lock(&lock->rwlock);
 }
 
+/* Downgrade write variant to a read lock */
+static inline void cg_dwlock(cglock_t *lock)
+{
+	wr_unlock_noyield(&lock->rwlock);
+	rd_lock(&lock->rwlock);
+	mutex_unlock_noyield(&lock->mutex);
+}
+
+/* Demote a write variant to an intermediate variant */
+static inline void cg_dwilock(cglock_t *lock)
+{
+	wr_unlock(&lock->rwlock);
+}
+
 /* Downgrade intermediate variant to a read lock */
 static inline void cg_dlock(cglock_t *lock)
 {
 	rd_lock(&lock->rwlock);
-	mutex_unlock(&lock->mutex);
+	mutex_unlock_noyield(&lock->mutex);
 }
 
 static inline void cg_runlock(cglock_t *lock)
@@ -807,11 +897,14 @@ static inline void cg_runlock(cglock_t *lock)
 
 static inline void cg_wunlock(cglock_t *lock)
 {
-	wr_unlock(&lock->rwlock);
+	wr_unlock_noyield(&lock->rwlock);
 	mutex_unlock(&lock->mutex);
 }
 
 struct pool;
+
+#define API_MCAST_CODE "FTW"
+#define API_MCAST_ADDR "224.0.0.75"
 
 extern bool opt_protocol;
 extern bool have_longpoll;
@@ -823,6 +916,11 @@ extern bool opt_autofan;
 extern bool opt_autoengine;
 extern bool use_curses;
 extern char *opt_api_allow;
+extern bool opt_api_mcast;
+extern char *opt_api_mcast_addr;
+extern char *opt_api_mcast_code;
+extern char *opt_api_mcast_des;
+extern int opt_api_mcast_port;
 extern char *opt_api_groups;
 extern char *opt_api_description;
 extern int opt_api_port;
@@ -830,30 +928,36 @@ extern bool opt_api_listen;
 extern bool opt_api_network;
 extern bool opt_delaynet;
 extern bool opt_restart;
+extern bool opt_nogpu;
 extern char *opt_icarus_options;
 extern char *opt_icarus_timing;
 extern bool opt_worktime;
 #ifdef USE_AVALON
 extern char *opt_avalon_options;
 #endif
+#ifdef USE_KLONDIKE
+extern char *opt_klondike_options;
+#endif
 #ifdef USE_USBUTILS
 extern char *opt_usb_select;
 extern int opt_usbdump;
 extern bool opt_usb_list_all;
+extern cgsem_t usb_resource_sem;
 #endif
 #ifdef USE_BITFORCE
 extern bool opt_bfl_noncerange;
 #endif
-extern bool ping;
 extern int swork_id;
 
 extern pthread_rwlock_t netacc_lock;
 
 extern const uint32_t sha256_init_state[];
+#ifdef HAVE_LIBCURL
 extern json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass,
 			     const char *rpc_req, bool, bool, int *,
 			     struct pool *pool, bool);
-extern const char *proxytype(curl_proxytype proxytype);
+#endif
+extern const char *proxytype(proxytypes_t proxytype);
 extern char *get_proxy(char *url, struct pool *pool);
 extern char *bin2hex(const unsigned char *p, size_t len);
 extern bool hex2bin(unsigned char *p, const char *hexstr, size_t len);
@@ -874,6 +978,8 @@ extern int opt_expiry;
 
 #ifdef USE_USBUTILS
 extern pthread_mutex_t cgusb_lock;
+extern pthread_mutex_t cgusbres_lock;
+extern cglock_t cgusb_fd_lock;
 #endif
 
 extern cglock_t control_lock;
@@ -886,9 +992,9 @@ extern pthread_rwlock_t devices_lock;
 extern pthread_mutex_t restart_lock;
 extern pthread_cond_t restart_cond;
 
-extern void thread_reportin(struct thr_info *thr);
 extern void clear_stratum_shares(struct pool *pool);
-extern int restart_wait(unsigned int mstime);
+extern void set_target(unsigned char *dest_target, double diff);
+extern int restart_wait(struct thr_info *thr, unsigned int mstime);
 
 extern void kill_work(void);
 
@@ -906,21 +1012,36 @@ extern void api(int thr_id);
 
 extern struct pool *current_pool(void);
 extern int enabled_pools;
+extern void get_intrange(char *arg, int *val1, int *val2);
 extern bool detect_stratum(struct pool *pool, char *url);
 extern void print_summary(void);
+extern void adjust_quota_gcd(void);
 extern struct pool *add_pool(void);
 extern bool add_pool_details(struct pool *pool, bool live, char *url, char *user, char *pass);
 
 #define MAX_GPUDEVICES 16
+#define MAX_DEVICES 4096
 
-#define MIN_INTENSITY -10
-#define _MIN_INTENSITY_STR "-10"
+#define MIN_SHA_INTENSITY -10
+#define MIN_SHA_INTENSITY_STR "-10"
+#define MAX_SHA_INTENSITY 14
+#define MAX_SHA_INTENSITY_STR "14"
+#define MIN_SCRYPT_INTENSITY 8
+#define MIN_SCRYPT_INTENSITY_STR "8"
+#define MAX_SCRYPT_INTENSITY 20
+#define MAX_SCRYPT_INTENSITY_STR "20"
 #ifdef USE_SCRYPT
-#define MAX_INTENSITY 20
-#define _MAX_INTENSITY_STR "20"
+#define MIN_INTENSITY (opt_scrypt ? MIN_SCRYPT_INTENSITY : MIN_SHA_INTENSITY)
+#define MIN_INTENSITY_STR (opt_scrypt ? MIN_SCRYPT_INTENSITY_STR : MIN_SHA_INTENSITY_STR)
+#define MAX_INTENSITY (opt_scrypt ? MAX_SCRYPT_INTENSITY : MAX_SHA_INTENSITY)
+#define MAX_INTENSITY_STR (opt_scrypt ? MAX_SCRYPT_INTENSITY_STR : MAX_SHA_INTENSITY_STR)
+#define MAX_GPU_INTENSITY MAX_SCRYPT_INTENSITY
 #else
-#define MAX_INTENSITY 14
-#define _MAX_INTENSITY_STR "14"
+#define MIN_INTENSITY MIN_SHA_INTENSITY
+#define MIN_INTENSITY_STR MIN_SHA_INTENSITY_STR
+#define MAX_INTENSITY MAX_SHA_INTENSITY
+#define MAX_INTENSITY_STR MAX_SHA_INTENSITY_STR
+#define MAX_GPU_INTENSITY MAX_SHA_INTENSITY
 #endif
 
 extern bool hotplug_mode;
@@ -945,6 +1066,7 @@ extern double total_secs;
 extern int mining_threads;
 extern struct cgpu_info *cpus;
 extern int total_devices;
+extern int zombie_devs;
 extern struct cgpu_info **devices;
 extern int total_pools;
 extern struct pool **pools;
@@ -968,6 +1090,7 @@ extern char *current_fullhash;
 extern double current_diff;
 extern uint64_t best_diff;
 extern struct timeval block_timeval;
+extern char *workpadding;
 
 #ifdef HAVE_OPENCL
 typedef struct {
@@ -1020,18 +1143,13 @@ enum pool_enable {
 struct stratum_work {
 	char *job_id;
 	char *prev_hash;
-	char *coinbase1;
-	char *coinbase2;
-	char **merkle;
+	unsigned char **merkle_bin;
 	char *bbversion;
 	char *nbit;
 	char *ntime;
 	bool clean;
 
-	size_t cb1_len;
-	size_t cb2_len;
 	size_t cb_len;
-
 	size_t header_len;
 	int merkles;
 	double diff;
@@ -1049,6 +1167,9 @@ struct pool {
 	int solved;
 	int diff1;
 	char diff[8];
+	int quota;
+	int quota_gcd;
+	int quota_used;
 
 	double diff_accepted;
 	double diff_rejected;
@@ -1080,7 +1201,7 @@ struct pool {
 	char *rpc_url;
 	char *rpc_userpass;
 	char *rpc_user, *rpc_pass;
-	curl_proxytype rpc_proxytype;
+	proxytypes_t rpc_proxytype;
 	char *rpc_proxy;
 
 	pthread_mutex_t pool_lock;
@@ -1107,12 +1228,16 @@ struct pool {
 	/* Stratum variables */
 	char *stratum_url;
 	char *stratum_port;
-	CURL *stratum_curl;
+	struct addrinfo stratum_hints;
 	SOCKETTYPE sock;
 	char *sockbuf;
 	size_t sockbuf_size;
 	char *sockaddr_url; /* stripped url used for sockaddr */
+	char *sockaddr_proxy_url;
+	char *sockaddr_proxy_port;
+
 	char *nonce1;
+	unsigned char *nonce1bin;
 	size_t n1_len;
 	uint32_t nonce2;
 	int n2size;
@@ -1122,8 +1247,10 @@ struct pool {
 	bool stratum_init;
 	bool stratum_notify;
 	struct stratum_work swork;
-	pthread_t stratum_thread;
+	pthread_t stratum_sthread;
+	pthread_t stratum_rthread;
 	pthread_mutex_t stratum_lock;
+	struct thread_q *stratum_q;
 	int sshares; /* stratum shares submitted waiting on response */
 
 	/* GBT  variables */
@@ -1138,10 +1265,16 @@ struct pool {
 	uint32_t gbt_version;
 	uint32_t curtime;
 	uint32_t gbt_bits;
-	unsigned char *gbt_coinbase;
 	unsigned char *txn_hashes;
 	int gbt_txns;
 	int coinbase_len;
+
+	/* Shared by both stratum & GBT */
+	unsigned char *coinbase;
+	int nonce2_offset;
+	unsigned char header_bin[128];
+	int merkle_offset;
+
 	struct timeval tv_lastwork;
 };
 
@@ -1158,8 +1291,12 @@ struct work {
 	unsigned char	target[32];
 	unsigned char	hash[32];
 
+#ifdef USE_SCRYPT
+	unsigned char	device_target[32];
+#endif
 	double		device_diff;
 	uint64_t	share_diff;
+	unsigned char	hash2[32];
 
 	int		rolls;
 
@@ -1182,13 +1319,14 @@ struct work {
 
 	bool		stratum;
 	char 		*job_id;
-	char		*nonce2;
+	uint32_t	nonce2;
+	size_t		nonce2_len;
 	char		*ntime;
 	double		sdiff;
 	char		*nonce1;
 
 	bool		gbt;
-	char		*gbt_coinbase;
+	char		*coinbase;
 	int		gbt_txns;
 
 	unsigned int	work_block;
@@ -1238,16 +1376,34 @@ struct modminer_fpga_state {
 };
 #endif
 
-extern void get_datestamp(char *, struct timeval *);
+#define TAILBUFSIZ 64
+
+#define tailsprintf(buf, bufsiz, fmt, ...) do { \
+	char tmp13[TAILBUFSIZ]; \
+	size_t len13, buflen = strlen(buf); \
+	snprintf(tmp13, sizeof(tmp13), fmt, ##__VA_ARGS__); \
+	len13 = strlen(tmp13); \
+	if ((buflen + len13) >= bufsiz) \
+		quit(1, "tailsprintf buffer overflow in %s %s line %d", __FILE__, __func__, __LINE__); \
+	strcat(buf, tmp13); \
+} while (0)
+
+extern void get_datestamp(char *, size_t, struct timeval *);
 extern void inc_hw_errors(struct thr_info *thr);
-extern void submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce);
+extern bool test_nonce(struct work *work, uint32_t nonce);
+extern void submit_tested_work(struct thr_info *thr, struct work *work);
+extern bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce);
+extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce,
+			  int noffset);
 extern struct work *get_queued(struct cgpu_info *cgpu);
 extern struct work *__find_work_bymidstate(struct work *que, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *find_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
+extern struct work *clone_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern void work_completed(struct cgpu_info *cgpu, struct work *work);
+extern struct work *take_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern void hash_queued_work(struct thr_info *mythr);
-extern void tailsprintf(char *f, const char *fmt, ...);
-extern void wlogprint(const char *f, ...);
+extern void _wlog(const char *str);
+extern void _wlogprint(const char *str);
 extern int curses_int(const char *query);
 extern char *curses_input(const char *query);
 extern void kill_work(void);
@@ -1258,8 +1414,9 @@ extern void write_config(FILE *fcfg);
 extern void zero_bestshare(void);
 extern void zero_stats(void);
 extern void default_save_file(char *filename);
-extern bool log_curses_only(int prio, const char *f, va_list ap);
+extern bool log_curses_only(int prio, const char *datetime, const char *str);
 extern void clear_logwin(void);
+extern void logwin_update(void);
 extern bool pool_tclear(struct pool *pool, bool *var);
 extern struct thread_q *tq_new(void);
 extern void tq_free(struct thread_q *tq);
@@ -1272,7 +1429,6 @@ extern void adl(void);
 extern void app_restart(void);
 extern void clean_work(struct work *work);
 extern void free_work(struct work *work);
-extern void __copy_work(struct work *work, struct work *base_work);
 extern struct work *copy_work(struct work *base_work);
 extern struct thr_info *get_thread(int thr_id);
 extern struct cgpu_info *get_devices(int id);
@@ -1297,7 +1453,8 @@ enum api_data_type {
 	API_FREQ,
 	API_VOLTS,
 	API_HS,
-	API_DIFF
+	API_DIFF,
+	API_PERCENT
 };
 
 struct api_data {
@@ -1329,5 +1486,6 @@ extern struct api_data *api_add_freq(struct api_data *root, char *name, double *
 extern struct api_data *api_add_volts(struct api_data *root, char *name, float *data, bool copy_data);
 extern struct api_data *api_add_hs(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_diff(struct api_data *root, char *name, double *data, bool copy_data);
+extern struct api_data *api_add_percent(struct api_data *root, char *name, double *data, bool copy_data);
 
 #endif /* __MINER_H__ */

@@ -493,9 +493,16 @@ void init_adl(int nDevs)
 		if (!gpus[gpu].cutofftemp)
 			gpus[gpu].cutofftemp = opt_cutofftemp;
 		if (opt_autofan) {
-			ga->autofan = true;
 			/* Set a safe starting default if we're automanaging fan speeds */
-			set_fanspeed(gpu, 50);
+			int nominal = 50;
+
+			ga->autofan = true;
+			/* Clamp fanspeed values to range provided */
+			if (nominal > gpus[gpu].gpu_fan)
+				nominal = gpus[gpu].gpu_fan;
+			if (nominal < gpus[gpu].min_fan)
+				nominal = gpus[gpu].min_fan;
+			set_fanspeed(gpu, nominal);
 		}
 		if (opt_autoengine) {
 			ga->autoengine = true;
@@ -1067,7 +1074,7 @@ static bool fan_autotune(int gpu, int temp, int fanpercent, int lasttemp, bool *
 
 	get_fanrange(gpu, &iMin, &iMax);
 	if (temp > ga->overtemp && fanpercent < iMax) {
-		applog(LOG_WARNING, "Overheat detected on GPU %d, increasing fan to 100%", gpu);
+		applog(LOG_WARNING, "Overheat detected on GPU %d, increasing fan to 100%%", gpu);
 		newpercent = iMax;
 
 		dev_error(cgpu, REASON_DEV_OVER_HEAT);
@@ -1336,7 +1343,7 @@ updated:
 			wlogprint("Failed to modify engine clock speed\n");
 	} else if (!strncasecmp(&input, "f", 1)) {
 		get_fanrange(gpu, &imin, &imax);
-		wlogprint("Enter fan percentage (%d - %d %)", imin, imax);
+		wlogprint("Enter fan percentage (%d - %d %%)", imin, imax);
 		val = curses_int("");
 		if (val < imin || val > imax) {
 			wlogprint("Value is outside safe range, are you sure?\n");
@@ -1392,7 +1399,7 @@ updated:
 		clear_logwin();
 		return;
 	}
-	nmsleep(1000);
+	cgsleep_ms(1000);
 	goto updated;
 }
 #endif

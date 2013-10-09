@@ -714,9 +714,12 @@ char *force_nthreads_int(const char *arg, int *i)
 #endif
 
 #ifdef WANT_CPUMINE
-static void cpu_detect()
+static void cpu_detect(bool hotplug)
 {
 	int i;
+
+	if (hotplug)
+		return;
 
 	// Reckon number of cores in the box
 	#if defined(WIN32)

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <limits.h>
 #include <sys/types.h>
 
 #ifdef WIN32
@@ -363,14 +364,14 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize)
 		applog(LOG_ERR, "Error %d: Failed to clGetDeviceInfo when trying to get CL_DEVICE_MAX_WORK_GROUP_SIZE", status);
 		return NULL;
 	}
-	applog(LOG_DEBUG, "Max work group size reported %d", clState->max_work_size);
+	applog(LOG_DEBUG, "Max work group size reported %d", (int)(clState->max_work_size));
 
 	status = clGetDeviceInfo(devices[gpu], CL_DEVICE_MAX_MEM_ALLOC_SIZE , sizeof(cl_ulong), (void *)&cgpu->max_alloc, NULL);
 	if (status != CL_SUCCESS) {
 		applog(LOG_ERR, "Error %d: Failed to clGetDeviceInfo when trying to get CL_DEVICE_MAX_MEM_ALLOC_SIZE", status);
 		return NULL;
 	}
-	applog(LOG_DEBUG, "Max mem alloc size is %u", cgpu->max_alloc);
+	applog(LOG_DEBUG, "Max mem alloc size is %lu", (long unsigned int)(cgpu->max_alloc));
 
 	/* Create binary filename based on parameters passed to opencl
 	 * compiler to ensure we only load a binary that matches what would
@@ -495,7 +496,7 @@ _clState *initCl(unsigned int gpu, char *name, size_t nameSize)
 				if (cgpu->thread_concurrency > cgpu->shaders * 5)
 					cgpu->thread_concurrency = cgpu->shaders * 5;
 			}
-			applog(LOG_DEBUG, "GPU %d: selecting thread concurrency of %u",gpu,  cgpu->thread_concurrency);
+			applog(LOG_DEBUG, "GPU %d: selecting thread concurrency of %d", gpu, (int)(cgpu->thread_concurrency));
 		} else
 			cgpu->thread_concurrency = cgpu->opt_tc;
 	}
@@ -610,7 +611,7 @@ build:
 		sprintf(CompilerOptions, "-D WORKSIZE=%d -D VECTORS%d -D WORKVEC=%d",
 			(int)clState->wsize, clState->vwidth, (int)clState->wsize * clState->vwidth);
 	}
-	applog(LOG_DEBUG, "Setting worksize to %d", clState->wsize);
+	applog(LOG_DEBUG, "Setting worksize to %d", (int)(clState->wsize));
 	if (clState->vwidth > 1)
 		applog(LOG_DEBUG, "Patched source to suit %d vectors", clState->vwidth);
 
@@ -663,6 +664,12 @@ build:
 
 	prog_built = true;
 
+#ifdef __APPLE__
+	/* OSX OpenCL breaks reading off binaries with >1 GPU so always build
+	 * from source. */
+	goto built;
+#endif
+
 	status = clGetProgramInfo(clState->program, CL_PROGRAM_NUM_DEVICES, sizeof(cl_uint), &cpnd, NULL);
 	if (unlikely(status != CL_SUCCESS)) {
 		applog(LOG_ERR, "Error %d: Getting program info CL_PROGRAM_NUM_DEVICES. (clGetProgramInfo)", status);
@@ -683,7 +690,7 @@ build:
 			break;
 
 	/* copy over all of the generated binaries. */
-	applog(LOG_DEBUG, "Binary size for gpu %d found in binary slot %d: %d", gpu, slot, binary_sizes[slot]);
+	applog(LOG_DEBUG, "Binary size for gpu %d found in binary slot %d: %d", gpu, slot, (int)(binary_sizes[slot]));
 	if (!binary_sizes[slot]) {
 		applog(LOG_ERR, "OpenCL compiler generated a zero sized binary, FAIL!");
 		return NULL;
@@ -766,7 +773,7 @@ built:
 	free(binary_sizes);
 
 	applog(LOG_INFO, "Initialising kernel %s with%s bitalign, %d vectors and worksize %d",
-	       filename, clState->hasBitAlign ? "" : "out", clState->vwidth, clState->wsize);
+	       filename, clState->hasBitAlign ? "" : "out", clState->vwidth, (int)(clState->wsize));
 
 	if (!prog_built) {
 		/* create a cl program executable for all the devices specified */
@@ -798,10 +805,11 @@ built:
 		/* Use the max alloc value which has been rounded to a power of
 		 * 2 greater >= required amount earlier */
 		if (bufsize > cgpu->max_alloc) {
-			applog(LOG_WARNING, "Maximum buffer memory device %d supports says %u", gpu, cgpu->max_alloc);
-			applog(LOG_WARNING, "Your scrypt settings come to %u", bufsize);
+			applog(LOG_WARNING, "Maximum buffer memory device %d supports says %lu",
+						gpu, (long unsigned int)(cgpu->max_alloc));
+			applog(LOG_WARNING, "Your scrypt settings come to %d", (int)bufsize);
 		}
-		applog(LOG_DEBUG, "Creating scrypt buffer sized %u", bufsize);
+		applog(LOG_DEBUG, "Creating scrypt buffer sized %d", (int)bufsize);
 		clState->padbufsize = bufsize;
 
 		/* This buffer is weird and might work to some degree even if
@@ -819,7 +827,8 @@ built:
 			applog(LOG_ERR, "Error %d: clCreateBuffer (CLbuffer0)", status);
 			return NULL;
 		}
-	}
+		clState->outputBuffer = clCreateBuffer(clState->context, CL_MEM_WRITE_ONLY, SCRYPT_BUFFERSIZE, NULL, &status);
+	} else
 #endif
 	clState->outputBuffer = clCreateBuffer(clState->context, CL_MEM_WRITE_ONLY, BUFFERSIZE, NULL, &status);
 	if (status != CL_SUCCESS) {
