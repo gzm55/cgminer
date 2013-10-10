@@ -8,11 +8,13 @@ rm -rf "${libusb_dir}"/autom4te.cache
 rm -rf "${libusb_dir}"/aclocal.m4 "${libusb_dir}"/ltmain.sh
 
 echo 'Running autoreconf -if...'
+pushd "$bs_dir"
 aclocal --force -I m4
 libtoolize --install --copy --force
 autoheader --force
 automake --add-missing --copy --force-missing
 autoconf --force
+popd
 
 autoreconf -fi "${libusb_dir}"
 

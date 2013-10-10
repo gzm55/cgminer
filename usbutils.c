@@ -3261,7 +3261,7 @@ union semun {
 #else
 static LPSECURITY_ATTRIBUTES unsec(LPSECURITY_ATTRIBUTES sec)
 {
-	FreeSid(((PSECURITY_DESCRIPTOR)(sec->lpSecurityDescriptor))->Group);
+	FreeSid(((PISECURITY_DESCRIPTOR)(sec->lpSecurityDescriptor))->Group);
 	free(sec->lpSecurityDescriptor);
 	free(sec);
 	return NULL;

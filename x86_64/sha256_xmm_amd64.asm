@@ -42,10 +42,10 @@ BITS 64
 
 %ifidn __YASM_OBJFMT__, macho64
 extern _sha256_consts_m128i
-extern _sha256_init
+extern _sha256_init_array
 %else
 extern sha256_consts_m128i
-extern sha256_init
+extern sha256_init_array
 %endif
 
 %ifidn __YASM_OBJFMT__, macho64
@@ -327,7 +327,7 @@ sha256_sse2_64_new:
     movdqa    [hash1+7*16], rH
 
     mov       data, hash1
-    mov       init, sha256_init
+    mov       init, sha256_init_array
 
     SHA_256
 

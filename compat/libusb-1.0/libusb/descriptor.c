@@ -71,7 +71,7 @@ int usbi_parse_descriptor(const unsigned char *source, const char *descriptor,
 			/* 32-bit word, convert from little endian to CPU */
 			case 'd':
 			/* Align to word boundary */
-				dp += ((unsigned long)dp & 1);
+				dp += ((unsigned long)(uintptr_t)dp & 1);
 
 				if (host_endian) {
 					memcpy(dp, sp, 4);

@@ -39,6 +39,9 @@
 #ifndef WIN32
 #include <sys/resource.h>
 #else
+#  ifdef HAVE_LIBCURL
+#    include <winsock2.h>
+#  endif
 #include <windows.h>
 #endif
 #include <ccan/opt/opt.h>
@@ -3247,7 +3250,7 @@ static void __kill_work(void)
 		if (thr && PTH(thr) != 0L)
 			pth = &thr->pth;
 		thr_info_cancel(thr);
-#ifndef WIN32
+#if !defined(WIN32) || defined(HAVE_LIBWINPTHREAD)
 		if (pth && *pth)
 			pthread_join(*pth, NULL);
 #else
@@ -5027,7 +5030,7 @@ static void *api_thread(void *userdata)
  * each pass through their scanhash function as well as in get_work whereas
  * queued work devices work asynchronously so get them to report in and out
  * only across get_work. */
-static void thread_reportin(struct thr_info *thr)
+void thread_reportin(struct thr_info *thr)
 {
 	thr->getwork = false;
 	cgtime(&thr->last);
@@ -7083,7 +7086,7 @@ static void *watchdog_thread(void __maybe_unused *userdata)
 				continue;
 
 #ifdef WANT_CPUMINE
-			if (cgpu->drv->drv_id == DRIVER_CPU)
+			if (cgpu->drv->drv_id == DRIVER_cpu)
 				continue;
 #endif
 			if (cgpu->status != LIFE_WELL && (now.tv_sec - thr->last.tv_sec < WATCHDOG_SICK_TIME)) {
@@ -7500,15 +7503,6 @@ void enable_curses(void) {
 	statusy = logstart;
 	unlock_curses();
 }
-#endif
-
-/* TODO: fix need a dummy CPU device_drv even if no support for CPU mining */
-#ifndef WANT_CPUMINE
-struct device_drv cpu_drv;
-struct device_drv cpu_drv = {
-	.drv_id = DRIVER_CPU,
-	.name = "CPU",
-};
 #endif
 
 static int cgminer_id_count = 0;
@@ -8084,7 +8078,7 @@ int main(int argc, char *argv[])
 				enable_device(devices[i]);
 			} else if (i < total_devices) {
 				if (opt_removedisabled) {
-					if (devices[i]->drv->drv_id == DRIVER_CPU)
+					if (devices[i]->drv->drv_id == DRIVER_cpu)
 						--opt_n_threads;
 				} else {
 					enable_device(devices[i]);

@@ -960,6 +960,7 @@ void cgtime(struct timeval *tv)
 	tv->tv_usec = lidiv.rem / 10;
 }
 
+#ifndef CLOCK_MONOTONIC
 void cgtimer_time(cgtimer_t *ts_start)
 {
 	lldiv_t lidiv;;
@@ -968,6 +969,7 @@ void cgtimer_time(cgtimer_t *ts_start)
 	ts_start->tv_sec = lidiv.quot;
 	ts_start->tv_nsec = lidiv.quot * 100;
 }
+#endif
 #else /* WIN32 */
 void cgtime(struct timeval *tv)
 {
